@@ -1,6 +1,7 @@
 name: Windows Virtual Machine
 on:
-  workflow_dispatch
+  push:
+  workflow_dispatch:
 
 defaults:
   run:
@@ -40,7 +41,7 @@ jobs:
           net user $admin $Env:WINDOWS_USER_PASSWORD
         }
       env:
-        WINDOWS_USER_PASSWORD: ${{ secrets.WINDOWS_USER_PASSWORD }}
+        WINDOWS_USER_PASSWORD: ${{ secrets.WINDOWS_USER_PASSWORD || 'WinTest2026' }}
 
     - name: Start ngrok tunnel for RDP (3389)
       run: Start-Process -FilePath .\ngrok\ngrok.exe -ArgumentList 'tcp','3389' -WindowStyle Hidden
@@ -70,4 +71,4 @@ jobs:
         Write-Host "=========================================="
 
     - name: Keep Running Windows System and keepAlive
-      run: Start-Sleep -Seconds 21600
+      run: Start-Sleep -Seconds 300

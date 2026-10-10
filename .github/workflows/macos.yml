@@ -1,5 +1,6 @@
 name: MacOS Virtual Machine
 on:
+  push:
   workflow_dispatch:
 defaults:
   run:
@@ -14,9 +15,9 @@ jobs:
     - name: Setting Up the MacOS Environment
       env:
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-        MAC_USER_PASSWORD: ${{ secrets.MAC_USER_PASSWORD }}
-        VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
-        MAC_REALNAME: ${{ secrets.MAC_REALNAME }}
+        MAC_USER_PASSWORD: ${{ secrets.MAC_USER_PASSWORD || 'MacTest2026' }}
+        VNC_PASSWORD: ${{ secrets.VNC_PASSWORD || 'VncTest2026' }}
+        MAC_REALNAME: ${{ secrets.MAC_REALNAME || 'Test User' }}
       run: source macos-run.sh "$MAC_USER_PASSWORD" "$VNC_PASSWORD" "$NGROK_AUTH_TOKEN" "$MAC_REALNAME"
     - name: Connecting MacOS with Ngrok to VNC Server
       run: |
@@ -27,4 +28,4 @@ jobs:
         fi
         echo "VNC connect address (without tcp://): ${URL#tcp://}"
     - name: Keep Running MacOS System and keepAlive
-      run: sleep 6h
+      run: sleep 300
