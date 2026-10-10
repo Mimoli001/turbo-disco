@@ -19,13 +19,21 @@ jobs:
         VNC_PASSWORD: ${{ secrets.VNC_PASSWORD || 'VncTest2026' }}
         MAC_REALNAME: ${{ secrets.MAC_REALNAME || 'Test User' }}
       run: source macos-run.sh "$MAC_USER_PASSWORD" "$VNC_PASSWORD" "$NGROK_AUTH_TOKEN" "$MAC_REALNAME"
-    - name: Connecting MacOS with Ngrok to VNC Server
+    - name: Connecting MacOS with bore to VNC Server
       run: |
-        URL=$(curl --silent http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url // empty')
-        if [[ -z "$URL" ]]; then
-          echo "::error::ngrok tunnel did not start. Check NGROK_AUTH_TOKEN, or verify your free ngrok account (TCP tunnels require credit card verification)."
+        HOSTPORT=""
+        for i in $(seq 1 30); do
+          HOSTPORT=$(grep -oE 'bore\.pub:[0-9]+' /tmp/bore.log 2>/dev/null | head -n1)
+          if [[ -n "$HOSTPORT" ]]; then
+            break
+          fi
+          sleep 1
+        done
+        if [[ -z "$HOSTPORT" ]]; then
+          echo "::error::bore tunnel did not start."
+          cat /tmp/bore.log 2>/dev/null
           exit 1
         fi
-        echo "VNC connect address (without tcp://): ${URL#tcp://}"
+        echo "VNC connect address: $HOSTPORT"
     - name: Keep Running MacOS System and keepAlive
       run: sleep 300

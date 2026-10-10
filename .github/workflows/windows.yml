@@ -15,15 +15,10 @@ jobs:
     steps:
     - uses: actions/checkout@v7
 
-    - name: Download ngrok
+    - name: Download bore
       run: |
-        Invoke-WebRequest https://bin.ngrok.com/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
-        Expand-Archive ngrok.zip -DestinationPath ngrok -Force
-
-    - name: Configure ngrok
-      run: .\ngrok\ngrok.exe config add-authtoken $Env:NGROK_AUTH_TOKEN
-      env:
-        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+        Invoke-WebRequest https://github.com/ekzhang/bore/releases/download/v0.6.0/bore-v0.6.0-x86_64-pc-windows-msvc.zip -OutFile bore.zip
+        Expand-Archive bore.zip -DestinationPath bore -Force
 
     - name: Enable Remote Desktop
       run: |
@@ -43,27 +38,30 @@ jobs:
       env:
         WINDOWS_USER_PASSWORD: ${{ secrets.WINDOWS_USER_PASSWORD || 'WinTest2026' }}
 
-    - name: Start ngrok tunnel for RDP (3389)
-      run: Start-Process -FilePath .\ngrok\ngrok.exe -ArgumentList 'tcp','3389' -WindowStyle Hidden
+    - name: Start bore tunnel for RDP (3389)
+      run: |
+        Remove-Item bore.log, bore.err -ErrorAction SilentlyContinue
+        Start-Process -FilePath .\bore\bore.exe -ArgumentList 'local','3389','--to','bore.pub' -RedirectStandardOutput bore.log -RedirectStandardError bore.err -WindowStyle Hidden
 
     - name: Print connection info
       run: |
-        $url = $null
+        $hostport = $null
         foreach ($i in 1..30) {
-          try {
-            $tunnels = (Invoke-RestMethod http://127.0.0.1:4040/api/tunnels).tunnels
-            if ($tunnels.Count -gt 0 -and $tunnels[0].public_url) {
-              $url = $tunnels[0].public_url
-              break
+          foreach ($f in 'bore.log','bore.err') {
+            if (Test-Path $f) {
+              $m = Select-String -Path $f -Pattern 'bore\.pub:\d+' | Select-Object -First 1
+              if ($m) { $hostport = $m.Matches[0].Value; break }
             }
-          } catch { }
-          Start-Sleep -Seconds 2
+          }
+          if ($hostport) { break }
+          Start-Sleep -Seconds 1
         }
-        if (-not $url) {
-          Write-Host "::error::ngrok tunnel did not start. Common causes: invalid NGROK_AUTH_TOKEN, or TCP tunnels are not enabled for your free ngrok account (credit card verification required)."
+        if (-not $hostport) {
+          Write-Host "::error::bore tunnel did not start."
+          Get-Content bore.err -ErrorAction SilentlyContinue | Select-Object -Last 30
+          Get-Content bore.log -ErrorAction SilentlyContinue | Select-Object -Last 30
           exit 1
         }
-        $hostport = $url -replace '^tcp://',''
         Write-Host "=========================================="
         Write-Host "To connect: mstsc /v:$hostport"
         Write-Host "Username: $Env:RDP_USER"

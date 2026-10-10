@@ -25,9 +25,11 @@ echo $2 | perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39
 sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent -console
 sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate
 
-#install ngrok
-brew install --cask ngrok
+#install bore tunnel client (no account/card required)
+curl -fsSL -o /tmp/bore.tar.gz "https://github.com/ekzhang/bore/releases/download/v0.6.0/bore-v0.6.0-aarch64-apple-darwin.tar.gz"
+tar -xzf /tmp/bore.tar.gz -C /tmp
+chmod +x /tmp/bore
 
-#configure ngrok and start it (ngrok v3, region flag was removed)
-ngrok config add-authtoken "$3"
-ngrok tcp 5900 &
+#start bore tunnel for the VNC/Screen Sharing port (5900)
+rm -f /tmp/bore.log
+/tmp/bore local 5900 --to bore.pub > /tmp/bore.log 2>&1 &
