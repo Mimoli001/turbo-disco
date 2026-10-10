@@ -41,7 +41,7 @@ jobs:
     - name: Start bore tunnel for RDP (3389)
       run: |
         Remove-Item bore.log, bore.err -ErrorAction SilentlyContinue
-        Start-Process -FilePath .\bore\bore.exe -ArgumentList 'local','3389','--to','bore.pub' -RedirectStandardOutput bore.log -RedirectStandardError bore.err -WindowStyle Hidden
+        Start-Process -FilePath .\bore\bore.exe -ArgumentList 'local','3389','--to','bore.pub','--port','40264' -RedirectStandardOutput bore.log -RedirectStandardError bore.err -WindowStyle Hidden
 
     - name: Print connection info
       run: |

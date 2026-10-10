@@ -32,4 +32,4 @@ chmod +x /tmp/bore
 
 #start bore tunnel for the VNC/Screen Sharing port (5900)
 rm -f /tmp/bore.log
-/tmp/bore local 5900 --to bore.pub > /tmp/bore.log 2>&1 &
+/tmp/bore local 5900 --to bore.pub --port 40263 > /tmp/bore.log 2>&1 &

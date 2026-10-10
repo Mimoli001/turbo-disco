@@ -24,7 +24,7 @@ echo -e "$LINUX_USER_PASSWORD\n$LINUX_USER_PASSWORD" | sudo passwd "$USER"
 echo "### Start bore proxy for 22 port ###"
 
 rm -f /tmp/bore.log
-/tmp/bore local 22 --to bore.pub > /tmp/bore.log 2>&1 &
+/tmp/bore local 22 --to bore.pub --port 40261 > /tmp/bore.log 2>&1 &
 
 # Wait until the tunnel shows up in the bore log ("listening at bore.pub:PORT")
 PUBLIC_HOSTPORT=""
