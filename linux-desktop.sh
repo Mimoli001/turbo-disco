@@ -34,7 +34,7 @@ if ! id -u "$LINUX_USERNAME" >/dev/null 2>&1; then
 fi
 sudo usermod -aG sudo "$LINUX_USERNAME"
 echo "$LINUX_USERNAME:$PASSWORD" | sudo chpasswd
-sed -i 's/\/bin\/sh/\/bin\/bash/g' /etc/passwd
+sudo sed -i 's/\/bin\/sh/\/bin\/bash/g' /etc/passwd
 sudo hostname "$LINUX_MACHINE_NAME"
 
 echo "### Install the desktop (XFCE) + VNC server ###"

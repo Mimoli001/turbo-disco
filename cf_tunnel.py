@@ -211,6 +211,12 @@ def ensure_dns(zone, hostname, tunnel_id):
 
 
 def ensure_access_app(account, hostname, app_type):
+    """Create the Access app in front of this hostname.
+
+    Returns None on success, or a short reason when it could not be created
+    (the caller only warns - the tunnel and the DNS record are still usable,
+    which lets the rest of the setup finish).
+    """
     _, payload = api("GET", f"/accounts/{account}/access/apps?domain={hostname}")
     apps = items(payload)
     if apps:
@@ -227,13 +233,14 @@ def ensure_access_app(account, hostname, app_type):
             },
         )
         if status not in (200, 201):
-            sys.exit(
-                f"cf_tunnel: could not create Access app {hostname}: {payload}"
-            )
+            message = "; ".join(
+                e.get("message", "") for e in (payload.get("errors") or [])
+            ) or str(payload)
+            return message
         app_id = payload["result"]["id"]
     # anyone who reaches the hostname may use it; the VM itself is
     # protected by its user password
-    api(
+    status, payload = api(
         "POST",
         f"/accounts/{account}/access/apps/{app_id}/policies",
         {
@@ -243,6 +250,12 @@ def ensure_access_app(account, hostname, app_type):
             "precedence": 1,
         },
     )
+    if status not in (200, 201):
+        message = "; ".join(
+            e.get("message", "") for e in (payload.get("errors") or [])
+        ) or str(payload)
+        return message
+    return None
 
 
 def warn_if_no_identity_provider(account):
@@ -313,9 +326,11 @@ def main_setup(selected):
     print(f"cf_tunnel: tunnel {run_name} created ({tunnel_id})")
     for name, host, service in routes:
         ensure_dns(zones[host]["id"], host, tunnel_id)
-        ensure_access_app(account, host, SERVICES[name][0])
+        problem = ensure_access_app(account, host, SERVICES[name][0])
         exports[f"CF_{name.upper()}_HOSTNAME"] = host
-        print(f"cf_tunnel: {host} -> {service} (Access app ready)")
+        if problem:
+            print(f"::warning::No Access app for {host}: {problem}")
+        print(f"cf_tunnel: {host} -> {service}")
 
     export_env(exports)
     print("==========================================")
