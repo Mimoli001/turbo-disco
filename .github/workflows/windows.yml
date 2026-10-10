@@ -1,6 +1,5 @@
 name: Windows Virtual Machine
 on:
-  push:
   workflow_dispatch:
 
 defaults:
@@ -15,10 +14,9 @@ jobs:
     steps:
     - uses: actions/checkout@v7
 
-    - name: Download bore
+    - name: Download cloudflared
       run: |
-        Invoke-WebRequest https://github.com/ekzhang/bore/releases/download/v0.6.0/bore-v0.6.0-x86_64-pc-windows-msvc.zip -OutFile bore.zip
-        Expand-Archive bore.zip -DestinationPath bore -Force
+        Invoke-WebRequest https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -OutFile cloudflared.exe
 
     - name: Enable Remote Desktop
       run: |
@@ -36,38 +34,49 @@ jobs:
           net user $admin $Env:WINDOWS_USER_PASSWORD
         }
       env:
-        WINDOWS_USER_PASSWORD: ${{ secrets.WINDOWS_USER_PASSWORD || 'WinTest2026' }}
+        WINDOWS_USER_PASSWORD: ${{ secrets.WINDOWS_USER_PASSWORD }}
 
-    - name: Start bore tunnel for RDP (3389)
+    - name: Create Cloudflare tunnel for RDP (3389)
+      run: python cf_tunnel.py setup rdp
+      env:
+        CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        CF_DOMAIN: ${{ secrets.CF_DOMAIN }}
+        CF_SUBDOMAIN: ${{ secrets.CF_SUBDOMAIN }}
+        CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+
+    - name: Start cloudflared tunnel
       run: |
-        Remove-Item bore.log, bore.err -ErrorAction SilentlyContinue
-        Start-Process -FilePath .\bore\bore.exe -ArgumentList 'local','3389','--to','bore.pub','--port','40264' -RedirectStandardOutput bore.log -RedirectStandardError bore.err -WindowStyle Hidden
+        Remove-Item cf.log, cf.err -ErrorAction SilentlyContinue
+        Start-Process -FilePath .\cloudflared.exe -ArgumentList 'tunnel','run','--token',$Env:CF_TUNNEL_TOKEN -RedirectStandardOutput cf.log -RedirectStandardError cf.err -WindowStyle Hidden
 
     - name: Print connection info
       run: |
-        $hostport = $null
-        foreach ($i in 1..30) {
-          foreach ($f in 'bore.log','bore.err') {
-            if (Test-Path $f) {
-              $m = Select-String -Path $f -Pattern 'bore\.pub:\d+' | Select-Object -First 1
-              if ($m) { $hostport = $m.Matches[0].Value; break }
+        $ready = $null
+        foreach ($i in 1..60) {
+          foreach ($f in 'cf.log','cf.err') {
+            if ((Test-Path $f) -and (Select-String -Path $f -Pattern 'Registered tunnel connection' -Quiet)) {
+              $ready = 1
+              break
             }
           }
-          if ($hostport) { break }
+          if ($ready) { break }
           Start-Sleep -Seconds 1
         }
-        if (-not $hostport) {
-          Write-Host "::error::bore tunnel did not start."
-          Get-Content bore.err -ErrorAction SilentlyContinue | Select-Object -Last 30
-          Get-Content bore.log -ErrorAction SilentlyContinue | Select-Object -Last 30
+        if (-not $ready) {
+          Write-Host "::error::cloudflared tunnel did not register."
+          Get-Content cf.err -ErrorAction SilentlyContinue | Select-Object -Last 40
+          Get-Content cf.log -ErrorAction SilentlyContinue | Select-Object -Last 40
           exit 1
         }
         Write-Host "=========================================="
-        Write-Host "To connect: mstsc /v:$hostport"
+        Write-Host "Tunnel is up: $Env:CF_RDP_HOSTNAME"
+        Write-Host "Connect from your PC with cloudflared installed:"
+        Write-Host "  cloudflared access tcp --hostname $Env:CF_RDP_HOSTNAME --url localhost:3389"
+        Write-Host "  then: mstsc /v:localhost:3389"
         Write-Host "Username: $Env:RDP_USER"
         Write-Host "Password: your WINDOWS_USER_PASSWORD secret"
         Write-Host "=========================================="
-        Write-Host "::notice::TUNNEL_PORT=$hostport"
+        Write-Host "::notice::TUNNEL_HOSTNAMES=$Env:CF_RDP_HOSTNAME"
 
     - name: Keep Running Windows System and keepAlive
-      run: Start-Sleep -Seconds 600
+      run: Start-Sleep -Seconds 21600

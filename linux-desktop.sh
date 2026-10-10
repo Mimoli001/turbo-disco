@@ -1,5 +1,5 @@
 #!/bin/bash
-# linux-desktop.sh LINUX_USER_PASSWORD NGROK_AUTH_TOKEN CHROME_HEADLESS_CODE LINUX_MACHINE_NAME LINUX_USERNAME GOOGLE_REMOTE_PIN
+# linux-desktop.sh LINUX_USER_PASSWORD CF_SSH_* CHROME_HEADLESS_CODE LINUX_MACHINE_NAME LINUX_USERNAME GOOGLE_REMOTE_PIN
 
 sudo useradd -m $LINUX_USERNAME
 sudo adduser $LINUX_USERNAME sudo
@@ -31,44 +31,44 @@ if [[ -z "$LINUX_USER_PASSWORD" ]]; then
   exit 3
 fi
 
-echo "### Install bore tunnel client ###"
+echo "### Install cloudflared ###"
 
-curl -fsSL -o /tmp/bore.tar.gz "https://github.com/ekzhang/bore/releases/download/v0.6.0/bore-v0.6.0-x86_64-unknown-linux-musl.tar.gz"
-tar -xzf /tmp/bore.tar.gz -C /tmp
-chmod +x /tmp/bore
+curl -fsSL -o /tmp/cloudflared "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
+chmod +x /tmp/cloudflared
 
 echo "### Update user: $USER password ###"
 echo -e "$LINUX_USER_PASSWORD\n$LINUX_USER_PASSWORD" | sudo passwd "$USER"
 
-echo "### Start bore proxy for 22 port ###"
+echo "### Create Cloudflare tunnel for SSH (port 22) ###"
 
-rm -f /tmp/bore.log
-/tmp/bore local 22 --to bore.pub --port 40262 > /tmp/bore.log 2>&1 &
+python3 cf_tunnel.py setup ssh
 
-# Wait until the tunnel shows up in the bore log ("listening at bore.pub:PORT")
-PUBLIC_HOSTPORT=""
-for i in $(seq 1 30); do
-  PUBLIC_HOSTPORT=$(grep -oE 'bore\.pub:[0-9]+' /tmp/bore.log 2>/dev/null | head -n1)
-  if [[ -n "$PUBLIC_HOSTPORT" ]]; then
+rm -f /tmp/cloudflared.log
+/tmp/cloudflared tunnel run --token "$CF_TUNNEL_TOKEN" > /tmp/cloudflared.log 2>&1 &
+
+# Wait until the tunnel is registered with the Cloudflare edge
+READY=""
+for i in $(seq 1 60); do
+  if grep -q "Registered tunnel connection" /tmp/cloudflared.log 2>/dev/null; then
+    READY=1
     break
   fi
   sleep 1
 done
 
-if [[ -z "$PUBLIC_HOSTPORT" ]]; then
-  echo "### bore failed to start the SSH tunnel ###"
-  tail -n 30 /tmp/bore.log 2>/dev/null
+if [[ -z "$READY" ]]; then
+  echo "### cloudflared failed to register the tunnel ###"
+  tail -n 40 /tmp/cloudflared.log 2>/dev/null
   exit 4
 fi
 
-HOST="${PUBLIC_HOSTPORT%:*}"
-PORT="${PUBLIC_HOSTPORT##*:}"
-
 echo ""
 echo "=========================================="
-echo "::notice::TUNNEL_PORT=$PORT"
-echo "To connect: ssh $LINUX_USERNAME@$HOST -p $PORT"
-echo "or connect with: ssh $USER@$HOST -p $PORT"
+echo "Tunnel is up: $CF_SSH_HOSTNAME"
+echo "Connect from your PC with cloudflared installed:"
+echo "  cloudflared access ssh --hostname $CF_SSH_HOSTNAME"
+echo "or: ssh -o ProxyCommand=\"cloudflared access ssh --hostname $CF_SSH_HOSTNAME\" $LINUX_USERNAME@$CF_SSH_HOSTNAME"
 echo "(use your LINUX_USER_PASSWORD secret as the password)"
 echo "Connect with remote desktop: https://remotedesktop.google.com/access"
 echo "=========================================="
+echo "::notice::TUNNEL_HOSTNAMES=$CF_SSH_HOSTNAME"

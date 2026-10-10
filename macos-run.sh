@@ -1,4 +1,4 @@
-#macos-run.sh MAC_USER_PASSWORD VNC_PASSWORD NGROK_AUTH_TOKEN MAC_REALNAME
+#macos-run.sh MAC_USER_PASSWORD VNC_PASSWORD MAC_REALNAME
 
 #disable spotlight indexing
 sudo mdutil -i off -a
@@ -6,7 +6,7 @@ sudo mdutil -i off -a
 #Create new account
 sudo dscl . -create /Users/vpsuser
 sudo dscl . -create /Users/vpsuser UserShell /bin/bash
-sudo dscl . -create /Users/vpsuser RealName $4
+sudo dscl . -create /Users/vpsuser RealName $3
 sudo dscl . -create /Users/vpsuser UniqueID 1001
 sudo dscl . -create /Users/vpsuser PrimaryGroupID 80
 sudo dscl . -create /Users/vpsuser NFSHomeDirectory /Users/vpsuser
@@ -25,11 +25,34 @@ echo $2 | perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39
 sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent -console
 sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate
 
-#install bore tunnel client (no account/card required)
-curl -fsSL -o /tmp/bore.tar.gz "https://github.com/ekzhang/bore/releases/download/v0.6.0/bore-v0.6.0-aarch64-apple-darwin.tar.gz"
-tar -xzf /tmp/bore.tar.gz -C /tmp
-chmod +x /tmp/bore
+#install cloudflared
+curl -fsSL -o /tmp/cloudflared.tgz "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64.tgz"
+tar -xzf /tmp/cloudflared.tgz -C /tmp
+chmod +x /tmp/cloudflared
 
-#start bore tunnel for the VNC/Screen Sharing port (5900)
-rm -f /tmp/bore.log
-/tmp/bore local 5900 --to bore.pub --port 40263 > /tmp/bore.log 2>&1 &
+#create the Cloudflare tunnel for VNC (port 5900)
+python3 cf_tunnel.py setup vnc
+
+rm -f /tmp/cloudflared.log
+/tmp/cloudflared tunnel run --token "$CF_TUNNEL_TOKEN" > /tmp/cloudflared.log 2>&1 &
+
+#wait until the tunnel is registered with the Cloudflare edge
+READY=""
+for i in $(seq 1 60); do
+  if grep -q "Registered tunnel connection" /tmp/cloudflared.log 2>/dev/null; then
+    READY=1
+    break
+  fi
+  sleep 1
+done
+
+if [[ -z "$READY" ]]; then
+  echo "### cloudflared failed to register the tunnel ###"
+  tail -n 40 /tmp/cloudflared.log 2>/dev/null
+  exit 4
+fi
+
+echo "VNC tunnel is up: $CF_VNC_HOSTNAME"
+echo "Connect from your PC with cloudflared installed:"
+echo "  cloudflared access tcp --hostname $CF_VNC_HOSTNAME --url localhost:5900"
+echo "::notice::TUNNEL_HOSTNAMES=$CF_VNC_HOSTNAME"

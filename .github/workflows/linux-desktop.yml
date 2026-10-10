@@ -1,7 +1,7 @@
 name: Ubuntu Desktop Virtual Machine
 on:
-  push:
   workflow_dispatch:
+
 defaults:
   run:
     shell: bash
@@ -10,16 +10,20 @@ jobs:
   build:
     name: Linux System Build
     runs-on: ubuntu-latest
+    timeout-minutes: 360
     steps:
     - uses: actions/checkout@v7
     - name: Setting Up the Ubuntu Environment
       run: bash linux-desktop.sh
       env:
-        LINUX_USER_PASSWORD: ${{ secrets.LINUX_USER_PASSWORD || 'TestPass2026' }}
-        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+        LINUX_USER_PASSWORD: ${{ secrets.LINUX_USER_PASSWORD }}
+        LINUX_MACHINE_NAME: ${{ secrets.LINUX_MACHINE_NAME }}
+        LINUX_USERNAME: ${{ secrets.LINUX_USERNAME }}
         CHROME_HEADLESS_CODE: ${{ secrets.CHROME_HEADLESS_CODE }}
-        LINUX_MACHINE_NAME: ${{ secrets.LINUX_MACHINE_NAME || 'freevps-test' }}
-        LINUX_USERNAME: ${{ secrets.LINUX_USERNAME || 'tester' }}
-        GOOGLE_REMOTE_PIN: ${{ secrets.GOOGLE_REMOTE_PIN || '123456' }}
+        GOOGLE_REMOTE_PIN: ${{ secrets.GOOGLE_REMOTE_PIN }}
+        CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        CF_DOMAIN: ${{ secrets.CF_DOMAIN }}
+        CF_SUBDOMAIN: ${{ secrets.CF_SUBDOMAIN }}
+        CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
     - name: Keep Running Ubuntu System and keepAlive
-      run: sleep 600
+      run: sleep 6h

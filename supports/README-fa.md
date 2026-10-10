@@ -23,8 +23,8 @@
 - [Secretهای مورد نیاز](#secretهای-مورد-نیاز)
 - [استقرار و اجرا](#استقرار-و-اجرا) — مک‌اواس · ویندوز · لینوکس
 - [به‌روزرسانی Fork](#به‌روزرسانی-fork)
-- [محدودیت‌ها]#محدودیت‌ها
-- [راه‌حل مشکلات]#راه‌حل-مشکلات
+- [محدودیت‌ها](#محدودیت‌ها)
+- [راه‌حل مشکلات](#راه‌حل-مشکلات)
 - [نکات امنیتی](#نکات-امنیتی)
 - [پیشنهادها و ترفندها](#پیشنهادها-و-ترفندها)
 - [لایسنس](#لایسنس)
@@ -35,10 +35,10 @@
 
 | ورک‌فلو (در تب `Actions`) | سیستم‌عامل | روش اتصال |
 | --- | --- | --- |
-| `MacOS Virtual Machine` | مک‌اواس روی تراشهٔ اپل | VNC Viewer از طریق تونل ngrok |
-| `Windows Virtual Machine` | دسکتاپ Windows Server (شبیه ویندوز ۱۰/۱۱) | Remote Desktop (`mstsc`) از طریق تونل ngrok |
-| `Ubuntu ssh Virtual Machine` | اوبونتو سرور | `ssh` از طریق تونل ngrok |
-| `Ubuntu Desktop Virtual Machine` | اوبونتو با دسکتاپ XFCE | Google Remote Desktop (به‌همراه SSH پشتیبان) |
+| `MacOS Virtual Machine` | مک‌اواس روی تراشهٔ اپل | VNC Viewer از طریق تونل Cloudflare روی **دامنهٔ شخصی شما** |
+| `Windows Virtual Machine` | دسکتاپ Windows Server (شبیه ویندوز ۱۰/۱۱) | Remote Desktop (`mstsc`) از طریق تونل Cloudflare روی **دامنهٔ شخصی شما** |
+| `Ubuntu ssh Virtual Machine` | اوبونتو سرور | `ssh` از طریق تونل Cloudflare روی **دامنهٔ شخصی شما** |
+| `Ubuntu Desktop Virtual Machine` | اوبونتو با دسکتاپ XFCE | Google Remote Desktop (به‌همراه SSH پشتیبان روی دامنهٔ شخصی شما) |
 
 همه‌چیز توسط ورک‌فلوهای پوشهٔ [`.github/workflows/`](../.github/workflows/) و اسکریپت‌های کنار همین فایل راه‌اندازی می‌شود؛ کافی است چند Secret تنظیم کنید و **Run workflow** را بزنید.
 
@@ -62,10 +62,10 @@
 ## شروع سریع
 
 1. این مخزن را **Fork** کنید.
-2. [Secretهای](#secretهای-مورد-نیاز) مورد نیازتان را در `Settings` → `Secrets and variables` → `Actions` → `New repository secret` اضافه کنید.
+2. یک [توکن API کلادفلر بسازید](#secretهای-مورد-نیاز) و Secretهای `CF_*` به‌همراه Secretهای مربوط به هر سیستم‌عامل را در `Settings` → `Secrets and variables` → `Actions` → `New repository secret` اضافه کنید.
 3. وارد تب **`Actions`** شوید، یک ورک‌فلو را از سمت چپ انتخاب کنید و **Run workflow** را بزنید.
-4. چند دقیقه صبر کنید، سپس اطلاعات اتصال را از لاگ job بخوانید (یا از داشبورد ngrok).
-5. با VNC Viewer، Remote Desktop یا `ssh` وصل شوید و تا پایان job از ماشین لذت ببرید.
+4. چند دقیقه صبر کنید، سپس اطلاعات اتصال را از لاگ job بخوانید.
+5. [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) را روی رایانهٔ خود نصب کنید، با VNC Viewer، Remote Desktop یا `ssh` وصل شوید و تا پایان job از ماشین لذت ببرید.
 
 ---
 
@@ -73,9 +73,30 @@
 
 به صفحهٔ پروژهٔ خود بروید: `Settings` → `Secrets and variables` → `Actions` → `New repository secret` و موارد زیر را اضافه کنید:
 
+### کلادفلر (برای همهٔ ورک‌فلوها)
+
+هر اجرا یک **تونل Cloudflare موقت** روی دامنهٔ شخصی شما می‌سازد؛ بنابراین هیچ سرویس تونل شخص ثالثی در کار نیست. در <https://dash.cloudflare.com/profile/api-tokens> یک توکن API با دسترسی‌های زیر بسازید و آن را به‌صورت Secret ذخیره کنید:
+
+| دسترسی توکن | کاربرد |
+| --- | --- |
+| Account → **Cloudflare Tunnel: Edit** | ساخت/به‌روزرسانی تونل هر اجرا |
+| Account → **Access: Apps and Policies: Edit** | انتشار ساب‌دومین‌ها (اپ‌های SSH/RDP/VNC) |
+| Zone → **DNS: Edit** | ساخت رکوردهای CNAME روی دامنهٔ شما |
+| Zone → **Zone: Read** | پیدا کردن Zone دامنهٔ شما |
+
 | Secret | کاربرد | توضیحات |
 | --- | --- | --- |
-| `NGROK_AUTH_TOKEN` | همهٔ تونل‌های ngrok (SSH / RDP / VNC) | کلید API را از <https://dashboard.ngrok.com/get-started/your-authtoken> کپی کنید. :warning: در پلن **رایگان** ngrok، تونل‌های TCP نیازمند **تأیید کارت اعتباری** هستند. |
+| `CF_API_TOKEN` | توکن API توضیح‌داده‌شده در بالا | مربوط به حساب کلادفلر شما |
+| `CF_DOMAIN` | دامنهٔ پایه برای تونل‌ها | DNS این دامنه باید روی همان حساب کلادفلر باشد، مثلاً `example.com` |
+| `CF_SUBDOMAIN` | ساب‌دومین اختیاری زیر `CF_DOMAIN` | مثلاً `myvps` → `ssh.myvps.example.com`؛ خالی بگذارید تا `ssh.example.com` استفاده شود |
+| `CF_ACCOUNT_ID` | شناسهٔ حساب کلادفلر (اختیاری) | در صورت خالی‌بودن به‌طور خودکار از توکن پیدا می‌شود |
+
+هر اجرا ساب‌دومین‌هایی مثل `ssh.<ساب‌دومین>.<دامنه>` (لینوکس)، `rdp.<ساب‌دومین>.<دامنه>` (ویندوز) و `vnc.<ساب‌دومین>.<دامنه>` (مک‌اواس) را منتشر می‌کند و در اجراهای بعدی همان‌ها را بازاستفاده می‌کند؛ تونل اجراهای تمام‌شده به‌طور خودکار حذف می‌شود.
+
+### حساب‌های پلتفرم
+
+| Secret | کاربرد | توضیحات |
+| --- | --- | --- |
 | `MAC_REALNAME` | نام نمایشی کاربر مک‌اواس | هر نامی که می‌خواهید |
 | `MAC_USER_PASSWORD` | رمز عبور مدیر سیستم مک‌اواس | هر رمزی که می‌خواهید |
 | `VNC_PASSWORD` | رمز ورود VNC در مک‌اواس | هر رمزی که می‌خواهید |
@@ -97,9 +118,12 @@
 1. تب **`Actions`** را باز کنید و **`MacOS Virtual Machine`** را انتخاب کنید.
 2. دکمهٔ **`Run Workflow`** را بزنید.
 3. چند دقیقه برای ساخت سیستم و راه‌اندازی تونل صبر کنید.
-4. به <https://dashboard.ngrok.com/status/tunnels> بروید و مطمئن شوید یک تونل آنلاین است.
-5. لینک را **بدون پیشوند `tcp://`** کپی کنید، نرم‌افزار [VNC Viewer](https://www.realvnc.com/en/connect/download/viewer/) را نصب کنید و لینک را در قسمت اتصال وارد کنید.
-6. با نام کاربری `vpsuser` و رمز همان `VNC_PASSWORD` که تنظیم کرده‌اید وارد شوید.
+4. [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) را روی رایانهٔ خود نصب کنید.
+5. دستوری را که در لاگ job چاپ شده اجرا کنید:
+   ```bash
+   cloudflared access tcp --hostname vnc.SUBDOMAIN.DOMAIN --url localhost:5900
+   ```
+6. نرم‌افزار [VNC Viewer](https://www.realvnc.com/en/connect/download/viewer/) را نصب کنید، به `localhost:5900` وصل شوید و با نام کاربری `vpsuser` و رمز همان `VNC_PASSWORD` وارد شوید.
 7. لذت ببرید!
 
 </details>
@@ -109,9 +133,13 @@
 <br>
 
 1. ورک‌فلوی **`Windows Virtual Machine`** را از تب `Actions` اجرا کنید.
-2. در لاگ job منتظر مرحلهٔ **`Print connection info`** بمانید — آدرس `mstsc /v:HOST:PORT`، نام کاربری و محل رمز عبور را چاپ می‌کند. می‌توانید <https://dashboard.ngrok.com/status/tunnels> را هم ببینید.
-3. برنامهٔ Remote Desktop Connection ویندوز (`mstsc`) یا Microsoft Remote Desktop را باز کنید و با همان آدرس متصل شوید.
-4. لذت ببرید!
+2. در لاگ job منتظر مرحلهٔ **`Print connection info`** بمانید — ساب‌دومین، نام کاربری و محل رمز عبور را چاپ می‌کند.
+3. [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) را روی رایانهٔ خود نصب کنید و اجرا کنید:
+   ```bash
+   cloudflared access tcp --hostname rdp.SUBDOMAIN.DOMAIN --url localhost:3389
+   ```
+4. برنامهٔ Remote Desktop Connection ویندوز (`mstsc`) یا Microsoft Remote Desktop را باز کنید و به `localhost:3389` وصل شوید.
+5. لذت ببرید!
 
 </details>
 
@@ -120,11 +148,11 @@
 <br>
 
 1. از تب `Actions` یکی از **`Ubuntu ssh Virtual Machine`** (فقط سرور) یا **`Ubuntu Desktop Virtual Machine`** (دسکتاپ XFCE) را اجرا کنید.
-2. دستور اتصال را از انتهای لاگ کپی کنید، مثلاً:
+2. [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) را روی رایانهٔ خود نصب کنید، سپس دستور اتصالِ چاپ‌شده در انتهای لاگ را اجرا کنید، مثلاً:
    ```bash
-   ssh LINUX_USERNAME@HOST -p PORT
+   ssh -o ProxyCommand="cloudflared access ssh --hostname ssh.SUBDOMAIN.DOMAIN" LINUX_USERNAME@ssh.SUBDOMAIN.DOMAIN
    ```
-3. آن را در ترمینال مک‌اواس، CMD/PowerShell ویندوز یا هر کلاینت SSH دیگری اجرا کنید، هنگام تأیید اثر انگشت **`yes`** را تایپ کنید و سپس `LINUX_USER_PASSWORD` را وارد کنید.
+3. هنگام تأیید اثر انگشت **`yes`** را تایپ کنید و سپس `LINUX_USER_PASSWORD` را وارد کنید.
 4. برای دسترسی root دستور **`sudo -i`** را بزنید و همان رمز را وارد کنید.
 5. در نسخهٔ دسکتاپ، <https://remotedesktop.google.com/access> را در مرورگر روی یک ماشین دیگر باز کنید و با `GOOGLE_REMOTE_PIN` به میزبان متصل شوید.
 
@@ -165,8 +193,8 @@ git push
 | --- | --- |
 | 1 | **۶ ساعت** زمان اجرا برای هر job — سقف سختِ رانرهای GitHub. با رسیدن به این سقف، job خاتمه و ماشین پاک می‌شود. |
 | 2 | **فایل‌های مهم و حساس را روی ماشین ذخیره نکنید:** همه‌چیز بعد از پایان کار حذف شده و قابل بازگردانی نیست. |
-| 3 | پلن رایگان ngrok حداکثر **۳** تونل آنلاین همزمان می‌دهد؛ پس هر سه سیستم را همزمان اجرا کنید. :warning: تونل‌های TCP (SSH / RDP / VNC) نیازمند **تأیید کارت اعتباری**‌اند و محدود به ۱۰۰ اتصال در دقیقه، ۵٬۰۰۰ اتصال در ماه و ۱ گیگابایت ترافیک در ماه‌اند (<https://ngrok.com/pricing>). |
-| 4 | **وارد حساب‌های شخصی نشوید** (گوگل، مایکروسافت، بانک و…): اتصال VNC رمزگذاری سرتاسری ندارد و قابل رهگیری است. |
+| 3 | هر اجرا **تونل Cloudflare خودش** را روی دامنهٔ شما می‌سازد و تونل اجراهای تمام‌شده را به‌طور خودکار حذف می‌کند؛ پس می‌توانید هر چهار سیستم را همزمان اجرا کنید. تنها محدودیت، سقف پلن کلادفلر شماست (پلن رایگان برای این کار کاملاً کافی است). |
+| 4 | **وارد حساب‌های شخصی نشوید** (گوگل، مایکروسافت، بانک و…) مگر اینکه خود حساب کلادفلرتان هم خوب محافظت شده باشد: این تونل‌ها روی دامنهٔ شما منتشر می‌شوند. |
 | 5 | Actions در مخازن **عمومی** رایگان و نامحدود است. در یک Fork **خصوصی** ۲٬۰۰۰ دقیقهٔ رایگان ماهانه بین همهٔ ورک‌فلوها مشترک است (لینوکس ۱×، ویندوز ۲×، مک‌اواس ۱۰×). |
 | 6 | در پلن GitHub Free حداکثر **۲۰** job همزمان اجرا می‌شود که حداکثر **۵** تای آن‌ها می‌تواند مک‌اواس باشد. |
 
@@ -176,8 +204,10 @@ git push
 
 | مشکل | دلیل محتمل — و راه‌حل |
 | --- | --- |
-| `ngrok tunnel did not start` | `NGROK_AUTH_TOKEN` نامعتبر است، یا تونل‌های TCP روی حساب ngrok فعال نیستند (پلن رایگان به تأیید کارت اعتباری نیاز دارد). |
-| فقط یک یا دو ماشین همزمان بالا می‌آید | پلن رایگان ngrok در مجموع ۳ تونل می‌دهد. |
+| `cf_tunnel: zone ... is not hosted on this Cloudflare account` | مقدار `CF_DOMAIN` اشتباه است یا DNS آن دامنه روی حساب کلادفلرِ توکن شما نیست. |
+| `cf_tunnel: tunnel creation failed` یا خطای 403 از API | توکن `CF_API_TOKEN` نامعتبر یا فاقد دسترسی است — باید Cloudflare Tunnel:Edit، Access:Apps and Policies:Edit، DNS:Edit و Zone:Read داشته باشد. |
+| `cloudflared failed to register the tunnel` | دسترسی توکن از بین رفته یا کلادفلر موقتاً مشکل داشته — ورک‌فلو را دوباره اجرا کنید. |
+| خطای `cloudflared: command not found` روی رایانهٔ شما | [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) را نصب کنید — این برنامه کلاینت اتصال شماست. |
 | ورک‌فلو بلافاصله بعد از Fork شکست می‌خورد | Fork شما عقب است: [آن را به‌روز کنید](#به‌روزرسانی-fork). |
 | اتصال از راه دور بعد از مدتی قطع می‌شود | job تمام شده — دورهٔ keep-alive آن به پایان رسیده یا سقف ۶ ساعته پر شده است. دوباره ورک‌فلو را اجرا کنید. |
 | jobهای مک‌اواس در صف می‌مانند | در پلن رایگان حداکثر ۵ job مک‌اواس همزمان اجرا می‌شود. |
@@ -187,7 +217,7 @@ git push
 ## نکات امنیتی
 
 - این ماشین‌ها **محیط‌های موقتی** هستند، نه سرور: هرچه رویشان است را بعد از پایان job پاک‌شده فرض کنید.
-- ترافیک VNC از طریق تونل رایگان ngrok **رمزنگاری سرتاسری ندارد** — هرگز وارد حساب شخصی یا کاری خود نشوید.
+- ترافیک بین رایانهٔ شما و لبهٔ کلادفلر توسط `cloudflared` رمزگذاری می‌شود؛ توکن `CF_API_TOKEN` و دامنه‌تان را مثل اطلاعات ورود تولیدی نگه دارید — هرکسی که به `ssh/rdp/vnc.<دامنهٔ شما>` دسترسی داشته باشد می‌تواند *تلاش* کند وصل شود (رمز ماشین مجازی محافظ اصلی است).
 - از رمزهای عبور یک‌بارمصرف استفاده کنید و اطلاعات اتصال چاپ‌شده در لاگ job را هنگام اجرا، مثل یک Secret محرمانه نگه دارید.
 
 ---

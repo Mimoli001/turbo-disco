@@ -35,10 +35,10 @@
 
 | Workflow (in the `Actions` tab) | Operating system | How you connect to it |
 | --- | --- | --- |
-| `MacOS Virtual Machine` | macOS on Apple silicon | VNC Viewer through an ngrok tunnel |
-| `Windows Virtual Machine` | Windows Server desktop (looks like Windows 10/11) | Remote Desktop (`mstsc`) through an ngrok tunnel |
-| `Ubuntu ssh Virtual Machine` | Ubuntu Server | `ssh` through an ngrok tunnel |
-| `Ubuntu Desktop Virtual Machine` | Ubuntu with the XFCE desktop | Google Remote Desktop (+ SSH backup) |
+| `MacOS Virtual Machine` | macOS on Apple silicon | VNC Viewer through a Cloudflare tunnel on **your own domain** |
+| `Windows Virtual Machine` | Windows Server desktop (looks like Windows 10/11) | Remote Desktop (`mstsc`) through a Cloudflare tunnel on **your own domain** |
+| `Ubuntu ssh Virtual Machine` | Ubuntu Server | `ssh` through a Cloudflare tunnel on **your own domain** |
+| `Ubuntu Desktop Virtual Machine` | Ubuntu with the XFCE desktop | Google Remote Desktop (+ SSH backup on your own domain) |
 
 Everything is provisioned by the workflows in [`.github/workflows/`](.github/workflows/) and the setup scripts next to this file. You only add a few secrets and press **Run workflow**.
 
@@ -62,10 +62,10 @@ Specs below are the standard GitHub-hosted runners used by this project in **pub
 ## Quick start
 
 1. **Fork** this repository.
-2. Add the [secrets](#required-secrets) you need under `Settings` → `Secrets and variables` → `Actions` → `New repository secret`.
+2. Create a [Cloudflare API token](#required-secrets) and add the `CF_*` secrets plus the platform secrets you need under `Settings` → `Secrets and variables` → `Actions` → `New repository secret`.
 3. Open the **`Actions`** tab, pick a workflow on the left and press **Run workflow**.
-4. Wait a few minutes, then copy the connection info printed in the job log (or read it from the ngrok dashboard).
-5. Connect with VNC Viewer, Remote Desktop or `ssh` — and enjoy your machine until the job ends.
+4. Wait a few minutes, then copy the connection info printed in the job log.
+5. Install [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) on your PC, connect with VNC Viewer, Remote Desktop or `ssh` — and enjoy your machine until the job ends.
 
 ---
 
@@ -73,9 +73,30 @@ Specs below are the standard GitHub-hosted runners used by this project in **pub
 
 Go to your project page → `Settings` → `Secrets and variables` → `Actions` → `New repository secret` and add:
 
+### Cloudflare (all workflows)
+
+Every run creates a **temporary Cloudflare Tunnel** on your own domain, so no third-party tunnel service is involved. Create an API token at <https://dash.cloudflare.com/profile/api-tokens> with these permissions and store it as a secret:
+
+| Token permission | Needed for |
+| --- | --- |
+| Account → **Cloudflare Tunnel: Edit** | Creating/refreshing the tunnel of each run |
+| Account → **Access: Apps and Policies: Edit** | Publishing the hostnames (SSH/RDP/VNC apps) |
+| Zone → **DNS: Edit** | Creating the CNAME records on your domain |
+| Zone → **Zone: Read** | Looking up the zone of your domain |
+
 | Secret | Used for | Notes |
 | --- | --- | --- |
-| `NGROK_AUTH_TOKEN` | All ngrok tunnels (SSH / RDP / VNC) | Copy your API key from <https://dashboard.ngrok.com/get-started/your-authtoken>. :warning: On the ngrok **free** plan, TCP tunnels require a **verified credit card**. |
+| `CF_API_TOKEN` | The API token described above | Scoped to your Cloudflare account |
+| `CF_DOMAIN` | The base domain used for the tunnels | Must already be hosted (DNS) on the same Cloudflare account, e.g. `example.com` |
+| `CF_SUBDOMAIN` | Optional subdomain under `CF_DOMAIN` | e.g. `myvps` gives `ssh.myvps.example.com`; leave empty to use `ssh.example.com` |
+| `CF_ACCOUNT_ID` | Optional Cloudflare account id | Auto-discovered from the token when left empty |
+
+Each run publishes hostnames like `ssh.<subdomain>.<domain>` (Linux), `rdp.<subdomain>.<domain>` (Windows) and `vnc.<subdomain>.<domain>` (macOS) and reuses them on the next run; tunnels from finished runs are deleted automatically.
+
+### Platform accounts
+
+| Secret | Used for | Notes |
+| --- | --- | --- |
 | `MAC_REALNAME` | macOS user display name | Any name you like |
 | `MAC_USER_PASSWORD` | macOS admin password | Any password you like |
 | `VNC_PASSWORD` | macOS VNC login password | Any password you like |
@@ -97,9 +118,12 @@ Go to your project page → `Settings` → `Secrets and variables` → `Actions`
 1. Open the **`Actions`** tab and select **`MacOS Virtual Machine`**.
 2. Press **`Run Workflow`**.
 3. Wait a few minutes for the build and tunnel to come up.
-4. Open <https://dashboard.ngrok.com/status/tunnels> and confirm one tunnel is online.
-5. Copy the address **without the `tcp://` prefix**, install [VNC Viewer](https://www.realvnc.com/en/connect/download/viewer/) and paste it into the connect field.
-6. Log in with username `vpsuser` and the password you stored in `VNC_PASSWORD`.
+4. Install [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) on your PC.
+5. Run the command printed in the job log:
+   ```bash
+   cloudflared access tcp --hostname vnc.SUBDOMAIN.DOMAIN --url localhost:5900
+   ```
+6. Install [VNC Viewer](https://www.realvnc.com/en/connect/download/viewer/), connect to `localhost:5900`, and log in with username `vpsuser` and the password you stored in `VNC_PASSWORD`.
 7. Enjoy!
 
 </details>
@@ -109,9 +133,13 @@ Go to your project page → `Settings` → `Secrets and variables` → `Actions`
 <br>
 
 1. Start **`Windows Virtual Machine`** from the `Actions` tab.
-2. Wait for the **`Print connection info`** step in the job log — it prints your `mstsc /v:HOST:PORT` address, the username and where the password comes from. You can also check <https://dashboard.ngrok.com/status/tunnels>.
-3. Open Remote Desktop Connection (`mstsc`) or Microsoft Remote Desktop and connect using that address.
-4. Enjoy!
+2. Wait for the **`Print connection info`** step in the job log — it prints your hostname, the username and where the password comes from.
+3. Install [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) on your PC and run:
+   ```bash
+   cloudflared access tcp --hostname rdp.SUBDOMAIN.DOMAIN --url localhost:3389
+   ```
+4. Open Remote Desktop Connection (`mstsc`) or Microsoft Remote Desktop and connect to `localhost:3389`.
+5. Enjoy!
 
 </details>
 
@@ -120,11 +148,11 @@ Go to your project page → `Settings` → `Secrets and variables` → `Actions`
 <br>
 
 1. Start either **`Ubuntu ssh Virtual Machine`** (server only) or **`Ubuntu Desktop Virtual Machine`** (XFCE desktop) from the `Actions` tab.
-2. Copy the connection line printed at the end of the log, for example:
+2. Install [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) on your PC, then run the connection line printed at the end of the log, for example:
    ```bash
-   ssh LINUX_USERNAME@HOST -p PORT
+   ssh -o ProxyCommand="cloudflared access ssh --hostname ssh.SUBDOMAIN.DOMAIN" LINUX_USERNAME@ssh.SUBDOMAIN.DOMAIN
    ```
-3. Run it from macOS Terminal, Windows CMD/PowerShell or any SSH client, type **`yes`** when asked to confirm the fingerprint, then enter `LINUX_USER_PASSWORD`.
+3. Type **`yes`** when asked to confirm the fingerprint, then enter `LINUX_USER_PASSWORD`.
 4. Run **`sudo -i`** and enter the same password to get root access.
 5. For the desktop version, open <https://remotedesktop.google.com/access> in a browser on another machine and join the host with `GOOGLE_REMOTE_PIN`.
 
@@ -165,8 +193,8 @@ Your fork now runs the newest workflows and scripts.
 | --- | --- |
 | 1 | **6 hours** of execution time per job — the hard limit of GitHub-hosted runners. When it is reached the job is terminated and the machine is wiped. |
 | 2 | **Don't store important or sensitive files** on a machine: everything is deleted afterwards and cannot be recovered. |
-| 3 | The ngrok **free** plan allows **3** online tunnels at once, so run at most three of these systems concurrently. :warning: TCP tunnels (SSH / RDP / VNC) need **credit card verification** and are limited to 100 TCP connections/minute, 5,000 connections/month and 1 GB transfer/month (<https://ngrok.com/pricing>). |
-| 4 | **Don't log into personal accounts** (Google, Microsoft, banking, …): the VNC connection is not encrypted and can be intercepted. |
+| 3 | Every run creates its **own Cloudflare Tunnel** on your domain and deletes tunnels of finished runs automatically, so you can run all four systems at the same time. The only limits are your Cloudflare plan's (the free plan is plenty for this). |
+| 4 | **Don't log into personal accounts** (Google, Microsoft, banking, …) unless your Cloudflare account itself is secured well: the tunnel endpoints are published on your domain. |
 | 5 | Actions on **public** repositories are free and unlimited. On a **private** fork the 2,000 free minutes per month are shared by all workflows (Linux 1x, Windows 2x, macOS 10x per minute). |
 | 6 | On the GitHub Free plan at most **20** jobs run at the same time — **5** of them may be macOS jobs. |
 
@@ -176,8 +204,10 @@ Your fork now runs the newest workflows and scripts.
 
 | Symptom | Likely cause — and fix |
 | --- | --- |
-| `ngrok tunnel did not start` | Invalid `NGROK_AUTH_TOKEN`, or TCP tunnels are not enabled on your ngrok account (free plan needs credit card verification). |
-| Only one or two machines run at once | Your free ngrok plan allows 3 tunnels in total. |
+| `cf_tunnel: zone ... is not hosted on this Cloudflare account` | `CF_DOMAIN` is wrong or that domain's DNS is not on the Cloudflare account of your token. |
+| `cf_tunnel: tunnel creation failed` / 403 from the API | `CF_API_TOKEN` is missing, expired or lacks a permission — it needs Cloudflare Tunnel:Edit, Access:Apps and Policies:Edit, DNS:Edit and Zone:Read. |
+| `cloudflared failed to register the tunnel` | The token lost access, or Cloudflare had a hiccup — re-run the workflow. |
+| `cloudflared: command not found` on your PC | Install [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) — it is the client you connect with. |
 | The workflow fails immediately after you fork it | Your fork is behind: [update it](#updating-your-fork). |
 | The remote session drops after a while | The job ended — its keep-alive period is over, or the 6-hour limit was reached. Start the workflow again. |
 | macOS jobs are queued | Only 5 macOS jobs may run in parallel on the free plan. |
@@ -187,7 +217,7 @@ Your fork now runs the newest workflows and scripts.
 ## Security notes
 
 - These machines are **temporary playgrounds**, not servers: assume everything on them is wiped when the job ends.
-- VNC traffic through the free ngrok tunnel is **not end-to-end encrypted** — never sign in to personal or work accounts.
+- Traffic between your PC and the Cloudflare edge is encrypted by `cloudflared`; treat your `CF_API_TOKEN` and domain like production credentials — anyone who can reach `ssh/rdp/vnc.<your domain>` can *try* to log in (the VM password is the real barrier).
 - Use throw-away passwords, and treat the connection details printed in the job logs as secrets while a job is running.
 
 ---
