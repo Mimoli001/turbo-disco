@@ -38,30 +38,20 @@ jobs:
             except Exception as e:
                 return 0, {"exc": repr(e)}
 
-        def show(label, path):
+        def raw(label, path):
             s, p = get(path)
-            n = len(p.get("data") or []) if isinstance(p.get("data"), list) else p.get("data")
-            print(f"{label}\n   http={s} data={n} errors="
-                  f"{[(x.get('code'), x.get('message')) for x in (p.get('errors') or [])]}")
-            return s, p
+            body = json.dumps(p)
+            print(f"{label} http={s}\n   {body[:400]}")
 
         dom = os.environ.get("CF_DOMAIN", "")
         acct = os.environ.get("CF_ACCOUNT_ID", "")
-        print("CF_DOMAIN:", repr(dom), " CF_ACCOUNT_ID set:", bool(acct))
+        print("CF_DOMAIN set:", bool(dom), "len:", len(dom),
+              " CF_ACCOUNT_ID set:", bool(acct), "len:", len(acct))
+        print("token prefix:", tok[:6], " token len:", len(tok),
+              " has whitespace:", tok != tok.strip())
 
-        s, v = get("/user/tokens/verify")
-        print("token verify -> http=%s id=%s status=%s errors=%s" % (
-            s, (v.get("result") or {}).get("id"),
-            (v.get("result") or {}).get("status"),
-            [(x.get("code"), x.get("message")) for x in (v.get("errors") or [])]))
-
-        show("GET /accounts?per_page=50", "/accounts?per_page=50")
-        if acct:
-            show("GET /accounts/" + acct, "/accounts/" + acct)
-            show("GET /zones?account.id=" + acct, "/zones?account.id=" + acct + "&per_page=50")
-            show("GET cfd_tunnel list", f"/accounts/{acct}/cfd_tunnel?is_deleted=false&per_page=10")
-        tld = dom.split(".")[-1] if dom else ""
-        if tld:
-            show("GET /zones?name=" + dom, "/zones?name=" + dom)
+        raw("verify ", "/user/tokens/verify")
+        raw("accounts", "/accounts?per_page=50")
+        raw("zones ", "/zones?per_page=50")
         print("== done ==")
         PY
