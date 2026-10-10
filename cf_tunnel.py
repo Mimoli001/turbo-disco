@@ -69,10 +69,18 @@ def api(method, path, body=None):
         sys.exit(f"cf_tunnel: cannot reach the Cloudflare API: {exc}")
 
 
-def account_id():
+def account_id(zone=None):
+    """The Cloudflare account to work in.
+
+    CF_ACCOUNT_ID is optional: when it is empty we use the account that owns
+    the zone of CF_DOMAIN, so a token spanning several accounts still picks
+    the right one.
+    """
     explicit = env("CF_ACCOUNT_ID")
     if explicit:
         return explicit
+    if zone and zone.get("account", {}).get("id"):
+        return zone["account"]["id"]
     _, payload = api("GET", "/accounts?per_page=50")
     accounts = payload.get("data") or []
     if not accounts:
@@ -87,10 +95,10 @@ def find_zone(hostname):
     """Find the Cloudflare zone (domain) that owns this hostname."""
     _, payload = api("GET", "/zones?per_page=50&status=active")
     zones = sorted(
-        (z["name"] for z in payload.get("data") or []), key=len, reverse=True
+        (z for z in payload.get("data") or []), key=lambda z: len(z["name"]), reverse=True
     )
     for zone in zones:
-        if hostname == zone or hostname.endswith("." + zone):
+        if hostname == zone["name"] or hostname.endswith("." + zone["name"]):
             return zone
     sys.exit(
         f"cf_tunnel: no Cloudflare zone on this account contains {hostname}. "
@@ -270,11 +278,14 @@ def main_setup(selected):
             sys.exit(
                 f"cf_tunnel: unknown service {name!r} (use: {', '.join(SERVICES)})"
             )
-    account = account_id()
-    warn_if_no_identity_provider(account)
     routes = [
         (name, resolve_hostname(name), SERVICES[name][1]) for name in selected
     ]
+    # Resolve every hostname's zone up front; the first one also tells us which
+    # Cloudflare account to work in (CF_ACCOUNT_ID is optional).
+    zones = {host: find_zone(host) for _, host, _ in routes}
+    account = account_id(zones[routes[0][1]])
+    warn_if_no_identity_provider(account)
     run_name = TUNNEL_PREFIX + os.environ.get("GITHUB_RUN_ID", "local")
 
     prune_old_tunnels(account, run_name)
@@ -284,7 +295,7 @@ def main_setup(selected):
     exports = {"CF_TUNNEL_TOKEN": token}
     print(f"cf_tunnel: tunnel {run_name} created ({tunnel_id})")
     for name, host, service in routes:
-        ensure_dns(find_zone(host), host, tunnel_id)
+        ensure_dns(zones[host]["id"], host, tunnel_id)
         ensure_access_app(account, host, SERVICES[name][0])
         exports[f"CF_{name.upper()}_HOSTNAME"] = host
         print(f"cf_tunnel: {host} -> {service} (Access app ready)")
