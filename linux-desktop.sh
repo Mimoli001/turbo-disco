@@ -62,7 +62,7 @@ if [[ -z "$PUBLIC_HOSTPORT" ]]; then
 fi
 
 HOST="${PUBLIC_HOSTPORT%:*}"
-PORT="${HOSTPORT##*:}"
+PORT="${PUBLIC_HOSTPORT##*:}"
 
 echo ""
 echo "=========================================="

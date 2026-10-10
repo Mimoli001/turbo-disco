@@ -23,7 +23,7 @@ jobs:
       run: |
         HOSTPORT=""
         for i in $(seq 1 30); do
-          HOSTPORT=$(grep -oE 'bore\.pub:[0-9]+' /tmp/bore.log 2>/dev/null | head -n1)
+          HOSTPORT=$(grep -oE 'bore\.pub:[0-9]+' /tmp/bore.log 2>/dev/null | head -n1 || true)
           if [[ -n "$HOSTPORT" ]]; then
             break
           fi
@@ -36,4 +36,4 @@ jobs:
         fi
         echo "VNC connect address: $HOSTPORT"
     - name: Keep Running MacOS System and keepAlive
-      run: sleep 300
+      run: sleep 600

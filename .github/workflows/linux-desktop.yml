@@ -22,4 +22,4 @@ jobs:
         LINUX_USERNAME: ${{ secrets.LINUX_USERNAME || 'tester' }}
         GOOGLE_REMOTE_PIN: ${{ secrets.GOOGLE_REMOTE_PIN || '123456' }}
     - name: Keep Running Ubuntu System and keepAlive
-      run: sleep 300
+      run: sleep 600

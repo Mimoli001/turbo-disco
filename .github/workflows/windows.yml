@@ -69,4 +69,4 @@ jobs:
         Write-Host "=========================================="
 
     - name: Keep Running Windows System and keepAlive
-      run: Start-Sleep -Seconds 300
+      run: Start-Sleep -Seconds 600

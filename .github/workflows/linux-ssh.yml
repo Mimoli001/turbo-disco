@@ -23,4 +23,4 @@ jobs:
         LINUX_MACHINE_NAME: ${{ secrets.LINUX_MACHINE_NAME || 'freevps-test' }}
         LINUX_USERNAME: ${{ secrets.LINUX_USERNAME || 'tester' }}
     - name: Keep Running Ubuntu System and keepAlive
-      run: sleep 300
+      run: sleep 600
