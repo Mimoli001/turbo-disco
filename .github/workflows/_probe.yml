@@ -1,5 +1,6 @@
 name: _probe
 on:
+  push:
   workflow_dispatch:
 
 jobs:
