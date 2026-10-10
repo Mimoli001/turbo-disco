@@ -17,10 +17,6 @@ jobs:
         CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
         CF_DOMAIN: ${{ secrets.CF_DOMAIN }}
         CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-        CF_SSH_HOST: ${{ secrets.CF_SSH_HOST }}
-        CF_DESKTOP_HOST: ${{ secrets.CF_DESKTOP_HOST }}
-        CF_RDP_HOST: ${{ secrets.CF_RDP_HOST }}
-        CF_VNC_HOST: ${{ secrets.CF_VNC_HOST }}
       run: |
         python3 - <<'PY'
         import os, json, urllib.request, urllib.error
@@ -42,43 +38,30 @@ jobs:
             except Exception as e:
                 return 0, {"exc": repr(e)}
 
-        def err(p):
-            return [(x.get("code"), x.get("message")) for x in (p.get("errors") or [])]
+        def show(label, path):
+            s, p = get(path)
+            n = len(p.get("data") or []) if isinstance(p.get("data"), list) else p.get("data")
+            print(f"{label}\n   http={s} data={n} errors="
+                  f"{[(x.get('code'), x.get('message')) for x in (p.get('errors') or [])]}")
+            return s, p
 
         dom = os.environ.get("CF_DOMAIN", "")
-        print("== CF_DOMAIN shape ==")
-        print("  present:", bool(dom), " length:", len(dom))
-        print("  contains '/' or space:", ("/" in dom) or (" " in dom))
-        print("  startswith http:", dom.lower().startswith("http"))
-        print("  dot count:", dom.count("."), " TLD:", dom.split(".")[-1] if dom else "-")
-        for v in ("CF_ACCOUNT_ID", "CF_SSH_HOST", "CF_DESKTOP_HOST", "CF_RDP_HOST", "CF_VNC_HOST"):
-            print(f"  {v} present:", bool(os.environ.get(v, "")))
+        acct = os.environ.get("CF_ACCOUNT_ID", "")
+        print("CF_DOMAIN:", repr(dom), " CF_ACCOUNT_ID set:", bool(acct))
 
-        s, a = get("/accounts?per_page=50")
-        print("== GET /accounts ->", s, "==")
-        for x in (a.get("data") or []):
-            print("   id:", x.get("id"), " name:", x.get("name"))
-        print("   errors:", err(a))
+        s, v = get("/user/tokens/verify")
+        print("token verify -> http=%s id=%s status=%s errors=%s" % (
+            s, (v.get("result") or {}).get("id"),
+            (v.get("result") or {}).get("status"),
+            [(x.get("code"), x.get("message")) for x in (v.get("errors") or [])]))
 
-        s, z = get("/zones?per_page=50&status=active")
-        print("== GET /zones?status=active ->", s, "==")
-        for x in (z.get("data") or []):
-            print("   name:", x.get("name"), " id:", x.get("id"),
-                  " account:", (x.get("account") or {}).get("id"))
-        print("   errors:", err(z))
-
-        s, z2 = get("/zones?per_page=50")
-        print("== GET /zones (no status filter) ->", s, "==")
-        for x in (z2.get("data") or []):
-            print("   name:", x.get("name"), " status:", x.get("status"))
-        print("   errors:", err(z2))
-
-        acct = os.environ.get("CF_ACCOUNT_ID") or (
-            (a.get("data") or [{"id": None}])[0].get("id"))
+        show("GET /accounts?per_page=50", "/accounts?per_page=50")
         if acct:
-            s, idp = get(f"/accounts/{acct}/access/identity_providers")
-            print("== identity_providers ->", s, " count:",
-                  len(idp.get("data") or []), "==")
-            print("   errors:", err(idp))
+            show("GET /accounts/" + acct, "/accounts/" + acct)
+            show("GET /zones?account.id=" + acct, "/zones?account.id=" + acct + "&per_page=50")
+            show("GET cfd_tunnel list", f"/accounts/{acct}/cfd_tunnel?is_deleted=false&per_page=10")
+        tld = dom.split(".")[-1] if dom else ""
+        if tld:
+            show("GET /zones?name=" + dom, "/zones?name=" + dom)
         print("== done ==")
         PY
