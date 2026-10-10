@@ -1,0 +1,73 @@
+name: Windows Virtual Machine
+on:
+  workflow_dispatch
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Download ngrok
+      run: |
+        Invoke-WebRequest https://bin.ngrok.com/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
+        Expand-Archive ngrok.zip -DestinationPath ngrok -Force
+
+    - name: Configure ngrok
+      run: .\ngrok\ngrok.exe config add-authtoken $Env:NGROK_AUTH_TOKEN
+      env:
+        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+
+    - name: Enable Remote Desktop
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0
+        Enable-NetFirewallRule -DisplayGroup 'Remote Desktop'
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name 'UserAuthentication' -Value 1
+
+    - name: Set RDP password
+      run: |
+        $admin = (Get-LocalUser | Where-Object { $_.SID.Value -like '*-500' }).Name
+        echo "RDP_USER=$admin" | Out-File -FilePath $env:GITHUB_ENV -Append
+        if ([string]::IsNullOrEmpty($Env:WINDOWS_USER_PASSWORD)) {
+          Write-Host "WINDOWS_USER_PASSWORD secret is not set, keeping the default password of '$admin'."
+        } else {
+          net user $admin $Env:WINDOWS_USER_PASSWORD
+        }
+      env:
+        WINDOWS_USER_PASSWORD: ${{ secrets.WINDOWS_USER_PASSWORD }}
+
+    - name: Start ngrok tunnel for RDP (3389)
+      run: Start-Process -FilePath .\ngrok\ngrok.exe -ArgumentList 'tcp','3389' -WindowStyle Hidden
+
+    - name: Print connection info
+      run: |
+        $url = $null
+        foreach ($i in 1..30) {
+          try {
+            $tunnels = (Invoke-RestMethod http://127.0.0.1:4040/api/tunnels).tunnels
+            if ($tunnels.Count -gt 0 -and $tunnels[0].public_url) {
+              $url = $tunnels[0].public_url
+              break
+            }
+          } catch { }
+          Start-Sleep -Seconds 2
+        }
+        if (-not $url) {
+          Write-Host "::error::ngrok tunnel did not start. Common causes: invalid NGROK_AUTH_TOKEN, or TCP tunnels are not enabled for your free ngrok account (credit card verification required)."
+          exit 1
+        }
+        $hostport = $url -replace '^tcp://',''
+        Write-Host "=========================================="
+        Write-Host "To connect: mstsc /v:$hostport"
+        Write-Host "Username: $Env:RDP_USER"
+        Write-Host "Password: your WINDOWS_USER_PASSWORD secret"
+        Write-Host "=========================================="
+
+    - name: Keep Running Windows System and keepAlive
+      run: Start-Sleep -Seconds 21600

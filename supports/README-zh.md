@@ -1,7 +1,7 @@
 # Github Actions提供的免費虛擬機器(體驗/臨時)
 
 你幾乎可以在這裏領取免費的MacOS, Windows 10以及Ubuntu的虛擬機\
-:warning: 溫馨提示: 若果你發現某個系統啟動的時候操作發生問題, 敬請在[這裏](https://github.com/RealKoolisw/VirtualMachine-GithubAction/issues)建立問題, 並且請保持更新你的複製專案,
+:warning: 溫馨提示: 若果你發現某個系統啟動的時候操作發生問題, 敬請在[這裏](https://github.com/cybershadowvps/FreeVPS/issues)建立問題, 並且請保持更新你的複製專案,
 按[此處](#%E6%9B%B4%E6%96%B0%E4%BB%A3%E7%A2%BC)進行操作. 
 
 ## 屏幕截圖
@@ -83,14 +83,18 @@
 </details>
 
 ## 機器規格:
+以下規格為**公開**儲存庫中的標準 GitHub 托管運行器（在公開儲存庫中免費且不限時數）:
+
 ### Windows 及 Linux:
-- 2-核心 vCPU
+- 4-核心 vCPU
+- 16 GB 內存
+- 14 GB SSD硬盤儲存空間
+### macOS (`macos-latest`, Apple 晶片)
+- 3-核心 vCPU (Apple M1)
 - 7 GB 內存
 - 14 GB SSD硬盤儲存空間
-### MacOS 10.15
-- 3-核心 vCPU
-- 14 GB 內存
-- 14 GB SSD硬盤儲存空間
+
+> :warning: 以上規格適用於**公開** Fork。若你的 Fork 是**私有**的，Linux/Windows 運行器只有 2-核心 vCPU / 8 GB 內存，並會消耗每月 2,000 分鐘的免費 Actions 額度（Windows 計 2 倍、macOS 計 10 倍分鐘數）。
 
 ## 配置:
 
@@ -102,13 +106,14 @@ Secrets 名稱 | 用途 | 備註
 ----- | ----- | -----
 `MAC_REALNAME` | 對於MacOS用戶顯示名稱 | 輸入您想要的任何名稱
 `MAC_USER_PASSWORD` | 對於MacOS系統管理員密碼 | 輸入您想要的任何密碼
-`NGROK_AUTH_TOKEN` | 用於**ngrok**隧道 | 轉到ngrok網站，然後從 https://dashboard.ngrok.com/auth/your-authtoken 復制API密鑰
+`NGROK_AUTH_TOKEN` | 用於**ngrok**隧道 | 轉到ngrok網站，然後從 https://dashboard.ngrok.com/get-started/your-authtoken 復制API密鑰。：warning：ngrok 免費方案的 TCP 隧道（SSH/RDP/VNC）需要先完成信用卡驗證。
 `VNC_PASSWORD` | 輸入VNC遠程認證的登錄密碼 | 輸入您想要的任何密碼
 `WINDOWS_USER_PASSWORD` | 對於Windows 10 RDP登錄密碼 | 輸入您想要的任何密碼
 `LINUX_USERNAME` | 對於linux系統用戶名 | 輸入您想要的任何名稱
 `LINUX_USER_PASSWORD` | 對於Linux Shell和root密碼 | 輸入您想要的任何密碼
 `LINUX_MACHINE_NAME` | 對於Linux系統計算機名稱 | 輸入您想要的任何名稱
 `CHROME_HEADLESS_CODE`(自選) | 使用Google Remote遠程處理Linux桌面 | 從[這裡](https://remotedesktop.google.com/headless)復制代碼並使用您的Google帳戶登錄，然後將代碼複製到“Debian Linux”空白下方。：warning：每個代碼只能使用一次，當您使用一個代碼時，會生成另一個代碼。
+`GOOGLE_REMOTE_PIN` | Google Remote Desktop 的連接 PIN | 輸入任何不少於6位的 PIN，連接 Linux 桌面時需要輸入它
 
 ## 部署並運行
 
@@ -158,36 +163,39 @@ Secrets 名稱 | 用途 | 備註
 
 
 - Reminders:
-:warning: 不要關閉名為 `provisioner.exe` 的窗口，這將導致Windows系統進程停止並與Windows RDP斷開連接。
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/9a56f43b-0734-4186-b619-1588c208eb05.png">
+:warning: 連接期間請不要停止 workflow。虛擬機（及您的遠程會話）只會存活至 GitHub Actions 的 **6 小時**限制，之後所有內容都會被刪除。
 
-:warning: 不要在macOS虛擬機上安裝Big Sur更新，這將破壞您的遠程進程！
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/Screenshot%202021-02-23%20at%207.35.57%20AM.png">
+:warning: 連接期間請不要在虛擬機上安裝系統更新（macOS、Windows 等），它們可能會重新啟動並中斷您的遠程進程。
 
 ## 更新代碼:
 <details>
     <summary>單擊此處展開</summary>
 <br>
 
-1. 首先，點擊 `compare`.
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sync-steps/71352891-F8EF-4A27-A7FC-34960DAE9676.jpeg">
+要把本專案的最新版本同步到你的 Fork:
 
-2. 其次，按照以下說明操作，然後按`Pull Request`。
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sync-steps/ED0C5969-7230-4846-A692-1E1DA63EF44E.jpeg">
+**方式 A（在 GitHub 上）:** 打開你的 Fork，點擊分支名稱旁的 **Sync fork** 按鈕，然後按 **Update branch**。
 
-3. 第三，在標題上鍵入任何內容並創建`Pull Request`。
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sync-steps/F972E631-1940-4DED-8988-98C97221F6C4.jpeg">
+**方式 B（在終端機中）:**
 
-4. 第四，在您重定向到的頁面下單擊`Merge Pull Request`。
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sync-steps/65837991-741A-4DE2-A139-7CF9D0E75692.jpeg">
-    
+```bash
+git remote add upstream https://github.com/cybershadowvps/FreeVPS.git   # 僅第一次需要
+git fetch upstream
+git merge upstream/main      # 或: git rebase upstream/main
+git push
+```
+
+你的 Fork 現在已經是最新版本了。
+
 </details>
 
 ## 限制：
-1.您可以運行每個虛擬機，其運行時間只能運行 `6`小時。如果虛擬機達到此限制，它將終止並清除所有內容。\
+1.每個虛擬機的運行時間最多只能有 `6` 小時（這是 GitHub 托管運行器的硬性執行限制）。如果虛擬機達到此限制，它將終止並清除所有內容。\
 2.不建議您將一些重要且敏感的文件保存到每台計算機上，否則所有文件都將被刪除並且無法撤消。\
-3.由於我們使用的是 `ngrok`，由於ngrok免費計劃的限制，您只能一台運行這三個系統中的一個，除非您購買了 `ngrok`專業或商業計劃，否則您無法同時訪問兩個系統。\
-4.不建議從任何網站（就像`Google`或`Microsoft`）一樣登錄任何帳戶，因為VNC連接未加密並且很容易被其他人訪問。
+3.由於我們使用的是 `ngrok`，免費方案同時最多允許 **3** 個在線隧道，因此您最多可以同時運行這三個系統中的三個。：warning：免費方案的 **TCP 隧道（SSH/RDP/VNC）需要信用卡驗證**，並限制為每分鐘 100 個 TCP 連接、每月 5,000 個 TCP 連接及 1 GB 流量（詳見 https://ngrok.com/pricing）。\
+4.不建議從任何網站（就像`Google`或`Microsoft`）一樣登錄任何帳戶，因為VNC連接未加密並且很容易被其他人訪問。\
+5.**公開**儲存庫的 Actions 免費且不限時數；**私有** Fork 每月只有 2,000 分鐘免費額度（Linux 計 1 倍、Windows 計 2 倍、macOS 計 10 倍分鐘數）。\
+6.GitHub Free 方案最多同時運行 **20** 個作業（其中最多 **5** 個可以是 macOS 作業）。
 
 ##  建議和最佳技巧：
 - 如果您面對來自`MacOS`或`Windows`的緩慢而緩慢的遠程控制體驗，則可以使用`Google Remote Desktop`或`Microsoft Remote Control`來獲得更快，更流暢的遠程控制。\

@@ -13,7 +13,7 @@ sudo dscl . -create /Users/koolisw NFSHomeDirectory /Users/koolisw
 sudo dscl . -passwd /Users/koolisw $1
 sudo dscl . -passwd /Users/koolisw $1
 sudo createhomedir -c -u koolisw > /dev/null
-sudo dscl . -append /Groups/admin GroupMembership username
+sudo dscl . -append /Groups/admin GroupMembership koolisw
 
 #Enable VNC
 sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -allowAccessFor -allUsers -privs -all
@@ -28,6 +28,6 @@ sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resourc
 #install ngrok
 brew install --cask ngrok
 
-#configure ngrok and start it
-ngrok authtoken $3
-ngrok tcp 5900 --region=ap &
+#configure ngrok and start it (ngrok v3, region flag was removed)
+ngrok config add-authtoken "$3"
+ngrok tcp 5900 &

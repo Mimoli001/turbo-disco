@@ -1,6 +1,6 @@
 # Free Virtual Machine by Github Action
 
-[繁體中文](https://github.com/RealKoolisw/VirtualMachine-GithubAction/blob/main/supports/README-zh.md) [English](#)
+[繁體中文](supports/README-zh.md) [English](#)
 
 :warning: Reminder: If you are facing errors when starting the systems and vps, please fork and pull the newest version of codes of this repo to your forked repo. Press [here](#Updating-Codes) for steps. 
 Totally FREE for everyone to enjoy your own MacOS, Windows 10 and ubuntu vps.
@@ -84,14 +84,21 @@ type **yes** from the connect, and then type your ssh password by secrets of LIN
 </details>
 
 ## Machine Specification:
+Specs below are the standard GitHub-hosted runners used by this project in **public** repositories (free and unlimited there):
+
 ### Windows and Linux:
-- 2-core vCPU
+- 4-core vCPU
+- 16 GB RAM
+- 14 GB SSD Disk **(Excluded System used)**
+
+### macOS (`macos-latest`, Apple silicon)
+- 3-core vCPU (Apple M1)
 - 7 GB RAM
 - 14 GB SSD Disk **(Excluded System used)**
-### MacOS 10.15
-- 3-core vCPU
-- 14 GB RAM
-- 14 GB SSD Disk **(Excluded System used)**
+
+> :warning: These specs apply to **public** forks. If you fork this repository as **private**, Linux/Windows runners are smaller (2-core vCPU / 8 GB RAM), consume the 2,000 free Actions minutes per month (Windows counts 2x, macOS 10x per minute), and macOS concurrency is limited to 5 jobs.
+
+> :information_source: The Windows workflow runs on GitHub's Windows Server runner with Remote Desktop enabled (the desktop looks similar to Windows 10/11).
 
 ## Setting up:
 1. Fork this project
@@ -101,13 +108,14 @@ Secrets Name | Uses | Notes
 ----- | ----- | -----
 `MAC_REALNAME` | For MacOS User Display Name | Type any name you want
 `MAC_USER_PASSWORD` | For MacOS System Admin Password | Type any password you want
-`NGROK_AUTH_TOKEN` | For **ngrok** tunnel uses | Go to website, and copy the API key from https://dashboard.ngrok.com/auth/your-authtoken
+`NGROK_AUTH_TOKEN` | For **ngrok** tunnel uses | Go to website, and copy the API key from https://dashboard.ngrok.com/get-started/your-authtoken :warning: On the ngrok **free** plan, TCP tunnels (SSH/RDP/VNC) require a verified credit card on your ngrok account.
 `VNC_PASSWORD` | For the login password of VNC remote authentication | Type any password you want
-`WINDOWS_USER_PASSWORD` | For Windows 10 RDP login password | Type any password you want
+`WINDOWS_USER_PASSWORD` | For Windows RDP login password | Type any password you want; the workflow sets it as the RDP account password
 `LINUX_USERNAME` | For linux system username | Type any name you want
 `LINUX_USER_PASSWORD` | For linux shell and root password | Type any password you want
 `LINUX_MACHINE_NAME` | For Linux System Computer name | Type any name you want
 `CHROME_HEADLESS_CODE` | For remoting linux desktop using google remote | Copy Codes from [here](https://remotedesktop.google.com/headless) and login with your google account, and then copy the code below `Debian Linux` blank. :warning: Each code can only be used for once, generate another code when u have used that one.
+`GOOGLE_REMOTE_PIN` | PIN used by Google Remote Desktop | Type any PIN of at least 6 digits, you will need it when connecting to the Linux desktop
 
 ## Deloy and Run
 <details>
@@ -134,9 +142,9 @@ Secrets Name | Uses | Notes
     <summary>Windows 10</summary>
 <br>
 
-1. First, start the actions of Windows 10 System.
-2. Second, Go to https://dashboard.ngrok.com/status/tunnels and check if theres a one online tunnel running.
-3. Go to Windows Remote Desktop Connection app or Microsoft Remote Desktop software to connect to windows 10 VPS.
+1. First, start the Windows workflow from the `Actions` tab.
+2. Second, wait for the `Print connection info` step in the job log - it prints your `mstsc /v:HOST:PORT` address, username and password. You can also check https://dashboard.ngrok.com/status/tunnels
+3. Open Windows Remote Desktop Connection (`mstsc`) or Microsoft Remote Desktop and connect using that address.
 4. ENJOY!
 
 </details>
@@ -156,36 +164,39 @@ Secrets Name | Uses | Notes
 
 
 - Reminders:
-:warning: Dont close this windows which called "**provisioner.exe**", it will cause the windows system process to be stopped and disconnect from Windows RDP.
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/9a56f43b-0734-4186-b619-1588c208eb05.png">
+:warning: Dont stop the workflow while you are connected. The machine (and your remote session) lives only until the **6 hours** GitHub Actions limit, then everything is deleted.
 
-:warning: Dont install big sur updates on your macos virtual machine, it will break your remote process!
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/Screenshot%202021-02-23%20at%207.35.57%20AM.png">
+:warning: Dont install system updates (macOS, Windows or big system updates on any machine) on your virtual machine while connected, they may reboot it and break your remote process.
 
 ## Updating Codes
 <details>
     <summary>Click Here to Expand</summary>
 <br>
 
-1. First, click **compare**.
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sync-steps/71352891-F8EF-4A27-A7FC-34960DAE9676.jpeg">
+To pull the newest version of this project into your own fork:
 
-2. Second, follow instruction below and press crate pull request.
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sync-steps/ED0C5969-7230-4846-A692-1E1DA63EF44E.jpeg">
+**Option A (on GitHub):** open your fork, click the **Sync fork** button next to the branch name and press **Update branch**.
 
-3. Third, type anything on the title amd create a pull request.
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sync-steps/F972E631-1940-4DED-8988-98C97221F6C4.jpeg">
+**Option B (from a terminal):**
 
-4. Fourth, click merge pull request under the page you have redirected to.
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sync-steps/65837991-741A-4DE2-A139-7CF9D0E75692.jpeg">
-    
+```bash
+git remote add upstream https://github.com/cybershadowvps/FreeVPS.git   # only the first time
+git fetch upstream
+git merge upstream/main      # or: git rebase upstream/main
+git push
+```
+
+Your fork now runs the newest workflows and scripts.
+
 </details>
 
 ## Limits: 
-1. You can run each virtual machine only run up for **6** hours for execution time. If Virtual Machine reaches this limit, it will be terminated and clear everything.
+1. Each virtual machine can only run up to **6** hours of execution time (this is the hard job execution limit of GitHub-hosted runners). If the virtual machine reaches this limit, the job is terminated and everything is cleared.
 2. Not suggested for you saving some of important and sensitive files to each machine, be risked that all files will be deleted and cannot be undo.
-3. Since we are using **ngrok**, you can only run one of those **three** system by one due to ngrok free plan limits, you cannot access both system at the same time unless you purchased **ngrok** pro or business plan.
+3. Since we are using **ngrok**, the free plan allows up to **3** online tunnels (endpoints) at the same time, so you may run up to three of these systems concurrently. :warning: On the free plan **TCP tunnels (SSH / RDP / VNC) require credit card verification** on your ngrok account, and are limited to 100 TCP connections/minute, 5,000 TCP connections/month and 1 GB data transfer/month (see https://ngrok.com/pricing).
 4. Not suggested to login any account from any website (just like **Google or Microsoft**), since **VNC** connection is not encrypted and easily been accessed other people.
+5. Actions on **public** repositories are free and unlimited. On a **private** fork the 2,000 free minutes per month are shared by all workflows (Linux counts 1x, Windows 2x and macOS 10x per minute).
+6. On the GitHub Free plan at most **20** jobs run at the same time (**5** of them can be macOS jobs).
 
 ## Suggestions and Best Tricks:
 - If you are facing slow and laggy remote control experience from **MacOS** or **Windows**, you can use either **Google Remote Desktop** or **Microsoft Remote Control** for a faster and smoother remotes.

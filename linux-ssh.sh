@@ -1,6 +1,5 @@
-#linux-run.sh LINUX_USER_PASSWORD NGROK_AUTH_TOKEN LINUX_USERNAME LINUX_MACHINE_NAME
 #!/bin/bash
-# /home/runner/.ngrok2/ngrok.yml
+# linux-ssh.sh LINUX_USER_PASSWORD NGROK_AUTH_TOKEN LINUX_USERNAME LINUX_MACHINE_NAME
 
 sudo useradd -m $LINUX_USERNAME
 sudo adduser $LINUX_USERNAME sudo
@@ -20,30 +19,49 @@ fi
 
 echo "### Install ngrok ###"
 
-wget -q https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-386.zip
-unzip ngrok-stable-linux-386.zip
-chmod +x ./ngrok
+curl -fsSL -o /tmp/ngrok.zip "https://bin.ngrok.com/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.zip"
+unzip -o /tmp/ngrok.zip -d /tmp/ngrok-bin
+chmod +x /tmp/ngrok-bin/ngrok
 
 echo "### Update user: $USER password ###"
 echo -e "$LINUX_USER_PASSWORD\n$LINUX_USER_PASSWORD" | sudo passwd "$USER"
 
 echo "### Start ngrok proxy for 22 port ###"
 
+rm -f /tmp/ngrok.log
+/tmp/ngrok-bin/ngrok config add-authtoken "$NGROK_AUTH_TOKEN"
+/tmp/ngrok-bin/ngrok tcp 22 --log /tmp/ngrok.log &
 
-rm -f .ngrok.log
-./ngrok authtoken "$NGROK_AUTH_TOKEN"
-./ngrok tcp 22 --log ".ngrok.log" &
+# Wait until the tunnel shows up in the local ngrok API (http://127.0.0.1:4040)
+PUBLIC_URL=""
+for i in $(seq 1 30); do
+  if grep -q "command failed" /tmp/ngrok.log 2>/dev/null; then
+    break
+  fi
+  PUBLIC_URL=$(curl -s http://127.0.0.1:4040/api/tunnels | grep -oE 'tcp://[A-Za-z0-9.]+:[0-9]+' | head -n1)
+  if [[ -n "$PUBLIC_URL" ]]; then
+    break
+  fi
+  sleep 2
+done
 
-sleep 10
-HAS_ERRORS=$(grep "command failed" < .ngrok.log)
-
-if [[ -z "$HAS_ERRORS" ]]; then
-  echo ""
-  echo "=========================================="
-  echo "To connect: $(grep -o -E "tcp://(.+)" < .ngrok.log | sed "s/tcp:\/\//ssh $USER@/" | sed "s/:/ -p /")"
-  echo "or conenct with $(grep -o -E "tcp://(.+)" < .ngrok.log | sed "s/tcp:\/\//ssh (Your Linux Username)@/" | sed "s/:/ -p /")"
-  echo "=========================================="
-else
-  echo "$HAS_ERRORS"
+if [[ -z "$PUBLIC_URL" ]]; then
+  echo "### ngrok failed to start the SSH tunnel ###"
+  grep -h "command failed" /tmp/ngrok.log 2>/dev/null
+  tail -n 30 /tmp/ngrok.log 2>/dev/null
+  echo "Common causes:"
+  echo " - NGROK_AUTH_TOKEN is invalid (create one at https://dashboard.ngrok.com/get-started/your-authtoken)"
+  echo " - free ngrok accounts must verify a credit card before TCP tunnels (SSH/RDP/VNC) are allowed"
   exit 4
 fi
+
+HOSTPORT="${PUBLIC_URL#tcp://}"
+HOST="${HOSTPORT%:*}"
+PORT="${HOSTPORT##*:}"
+
+echo ""
+echo "=========================================="
+echo "To connect: ssh $LINUX_USERNAME@$HOST -p $PORT"
+echo "or connect with: ssh $USER@$HOST -p $PORT"
+echo "(use your LINUX_USER_PASSWORD secret as the password)"
+echo "=========================================="

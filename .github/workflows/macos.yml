@@ -1,5 +1,5 @@
 name: MacOS Virtual Machine
-on: 
+on:
   workflow_dispatch:
 defaults:
   run:
@@ -10,7 +10,7 @@ jobs:
     name: MacOS Build
     runs-on: macos-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7
     - name: Setting Up the MacOS Environment
       env:
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
@@ -19,6 +19,12 @@ jobs:
         MAC_REALNAME: ${{ secrets.MAC_REALNAME }}
       run: source macos-run.sh "$MAC_USER_PASSWORD" "$VNC_PASSWORD" "$NGROK_AUTH_TOKEN" "$MAC_REALNAME"
     - name: Connecting MacOS with Ngrok to VNC Server
-      run: curl --silent http://127.0.0.1:4040/api/tunnels | jq '.tunnels[0].public_url'
+      run: |
+        URL=$(curl --silent http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url // empty')
+        if [[ -z "$URL" ]]; then
+          echo "::error::ngrok tunnel did not start. Check NGROK_AUTH_TOKEN, or verify your free ngrok account (TCP tunnels require credit card verification)."
+          exit 1
+        fi
+        echo "VNC connect address (without tcp://): ${URL#tcp://}"
     - name: Keep Running MacOS System and keepAlive
-      uses: mxschmitt/action-tmate@v2
+      run: sleep 6h
