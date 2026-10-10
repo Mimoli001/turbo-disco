@@ -38,6 +38,21 @@ SERVICES = {
 }
 
 
+def items(payload):
+    """The array of a Cloudflare list endpoint.
+
+    Cloudflare API v4 puts it under "result" (with "result_info" holding the
+    pagination); reading "data" instead silently yields nothing, which is why
+    every lookup used to come back empty.
+    """
+    if isinstance(payload, dict):
+        for key in ("result", "data"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return value
+    return []
+
+
 def env(name, required=False):
     value = os.environ.get(name, "").strip()
     if required and not value:
@@ -82,7 +97,7 @@ def account_id(zone=None):
     if zone and zone.get("account", {}).get("id"):
         return zone["account"]["id"]
     _, payload = api("GET", "/accounts?per_page=50")
-    accounts = payload.get("data") or []
+    accounts = items(payload)
     if not accounts:
         sys.exit(
             "cf_tunnel: no Cloudflare account visible to this token "
@@ -95,13 +110,15 @@ def find_zone(hostname):
     """Find the Cloudflare zone (domain) that owns this hostname."""
     _, payload = api("GET", "/zones?per_page=50&status=active")
     zones = sorted(
-        (z for z in payload.get("data") or []), key=lambda z: len(z["name"]), reverse=True
+        items(payload), key=lambda z: len(z["name"]), reverse=True
     )
     for zone in zones:
         if hostname == zone["name"] or hostname.endswith("." + zone["name"]):
             return zone
+    seen = ", ".join(z["name"] for z in zones) or "(none)"
     sys.exit(
         f"cf_tunnel: no Cloudflare zone on this account contains {hostname}. "
+        f"Zones visible to this token: {seen}. "
         "Set CF_DOMAIN (or the CF_*_HOST override) to a name whose DNS is "
         "hosted on this account."
     )
@@ -132,7 +149,7 @@ def prune_old_tunnels(account, current):
     _, payload = api(
         "GET", f"/accounts/{account}/cfd_tunnel?is_deleted=false&per_page=100"
     )
-    for tunnel in payload.get("data") or []:
+    for tunnel in items(payload):
         name = tunnel.get("name", "")
         if name.startswith(TUNNEL_PREFIX) and name != current:
             api("DELETE", f"/accounts/{account}/cfd_tunnel/{tunnel['id']}")
@@ -152,7 +169,7 @@ def create_tunnel(account, name):
         _, listing = api(
             "GET", f"/accounts/{account}/cfd_tunnel?is_deleted=false&per_page=100"
         )
-        for tunnel in listing.get("data") or []:
+        for tunnel in items(listing):
             if tunnel.get("name") == name:
                 api("DELETE", f"/accounts/{account}/cfd_tunnel/{tunnel['id']}")
         return create_tunnel(account, name)
@@ -182,7 +199,7 @@ def ensure_dns(zone, hostname, tunnel_id):
         "ttl": 1,
     }
     _, payload = api("GET", f"/zones/{zone}/dns_records?type=CNAME&name={hostname}")
-    existing = (payload.get("data") or [None])[0]
+    existing = (items(payload) or [None])[0]
     if existing:
         status, answer = api(
             "PUT", f"/zones/{zone}/dns_records/{existing['id']}", record
@@ -195,7 +212,7 @@ def ensure_dns(zone, hostname, tunnel_id):
 
 def ensure_access_app(account, hostname, app_type):
     _, payload = api("GET", f"/accounts/{account}/access/apps?domain={hostname}")
-    apps = payload.get("data") or []
+    apps = items(payload)
     if apps:
         app_id = apps[0]["id"]
     else:
@@ -232,7 +249,7 @@ def warn_if_no_identity_provider(account):
     status, payload = api(
         "GET", f"/accounts/{account}/access/identity_providers"
     )
-    if status == 200 and not payload.get("data"):
+    if status == 200 and not items(payload):
         print(
             "::warning::No Cloudflare Access identity provider is configured. "
             "One-time setup: Zero Trust dashboard -> Settings -> Authentication "
