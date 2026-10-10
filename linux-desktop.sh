@@ -27,8 +27,12 @@ fi
 # Legacy VNC authentication is limited to 8 characters.
 VNC_PASSWORD="${PASSWORD:0:8}"
 
-sudo useradd -m "$LINUX_USERNAME"
-sudo adduser "$LINUX_USERNAME" sudo
+if ! id -u "$LINUX_USERNAME" >/dev/null 2>&1; then
+  # -N: do NOT create a same-named group - the GitHub runner already has an
+  # "admin" group, which makes a plain `useradd -m admin` fail.
+  sudo useradd -m -N "$LINUX_USERNAME"
+fi
+sudo usermod -aG sudo "$LINUX_USERNAME"
 echo "$LINUX_USERNAME:$PASSWORD" | sudo chpasswd
 sed -i 's/\/bin\/sh/\/bin\/bash/g' /etc/passwd
 sudo hostname "$LINUX_MACHINE_NAME"
