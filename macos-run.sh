@@ -4,16 +4,16 @@
 sudo mdutil -i off -a
 
 #Create new account
-sudo dscl . -create /Users/koolisw
-sudo dscl . -create /Users/koolisw UserShell /bin/bash
-sudo dscl . -create /Users/koolisw RealName $4
-sudo dscl . -create /Users/koolisw UniqueID 1001
-sudo dscl . -create /Users/koolisw PrimaryGroupID 80
-sudo dscl . -create /Users/koolisw NFSHomeDirectory /Users/koolisw
-sudo dscl . -passwd /Users/koolisw $1
-sudo dscl . -passwd /Users/koolisw $1
-sudo createhomedir -c -u koolisw > /dev/null
-sudo dscl . -append /Groups/admin GroupMembership koolisw
+sudo dscl . -create /Users/vpsuser
+sudo dscl . -create /Users/vpsuser UserShell /bin/bash
+sudo dscl . -create /Users/vpsuser RealName $4
+sudo dscl . -create /Users/vpsuser UniqueID 1001
+sudo dscl . -create /Users/vpsuser PrimaryGroupID 80
+sudo dscl . -create /Users/vpsuser NFSHomeDirectory /Users/vpsuser
+sudo dscl . -passwd /Users/vpsuser $1
+sudo dscl . -passwd /Users/vpsuser $1
+sudo createhomedir -c -u vpsuser > /dev/null
+sudo dscl . -append /Groups/admin GroupMembership vpsuser
 
 #Enable VNC
 sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -allowAccessFor -allUsers -privs -all

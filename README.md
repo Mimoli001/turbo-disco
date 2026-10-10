@@ -1,87 +1,9 @@
 # Free Virtual Machine by Github Action
 
-[繁體中文](supports/README-zh.md) [English](#)
+[فارسی](supports/README-fa.md) [English](#)
 
-:warning: Reminder: If you are facing errors when starting the systems and vps, please fork and pull the newest version of codes of this repo to your forked repo. Press [here](#Updating-Codes) for steps. 
+:warning: Reminder: If you are facing errors when starting the systems and vps, please fork and pull the newest version of codes of this repo to your forked repo. Press [here](#updating-codes) for steps. 
 Totally FREE for everyone to enjoy your own MacOS, Windows 10 and ubuntu vps.
-
-## Screenshots:
-<details>
-    <summary>Windows 10</summary>
-<br>
-    
-- Windows 10 Version
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/268600af-c8b9-47cf-b5dd-d1c1ed6d9ce9.png">
-
-- Windows 10 Task Manager
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/0cf98258-a6fe-46bb-ac9a-ee4bb3037e3a.png" >
-
-- Windows 10 Device Manager
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/d32cf285-5ecf-4cce-a52a-5cb54fb130c7.png">
-
-- Windows 10 Device Specification
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/e1852b80-d550-44f3-b619-86ea82902bb4.png">
-    
-</details>
-
-<details>
-    <summary>Ubuntu (SSH Version)</summary>
-<br>
-
-1. Click **Run Workflox**
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/96644176-D760-47D4-BED2-C47E62A6763F.png" >
-
-2. Copy ssh with url
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/0F804C5F-FE8F-45FA-9720-F91F212597DF.png" >
-
-3. Open cmd or Terminal from your windows/MacOS or Linux, and type command provided by github actions boxes.
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/78FE6C5A-7270-4986-AB8F-57EC4C9B4F44.png" >
-
-type **yes** from the connect, and then type your ssh password by secrets of LINUX_USER_PASSWORD u have set.
-
-4. Type **sudo -i** for root permission and type your password.
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/E5527744-1ED1-4550-8867-EF4EC76D6895.png" >
-
-5. Enjoy having your FREE linux SSH VPS and type any command you want.(but only 6 hours)
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/E6E9EA63-AC24-4FDB-AAF9-8B509658440A.png" >
-
-</details>
-
-<details>
-    <summary>Ubuntu (Desktop Remote Version)</summary>
-<br>
-
-- Desktop Screenshot
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/4EB9C2FF-9D03-4998-A440-D7716A0F7CD0.png" >
-
-- Linux Chrome
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/09F0A4CF-9B30-44CD-8DC4-139D03DFC2CC.png" >
-
-- Install any apps you want :)
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/A0886141-DF1E-4379-88E7-F00EDAD87D0E.png">
-
-</details>
-
-<details>
-    <summary>MacOS</summary>
-<br>
-
-- Desktop Screenshot
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/Screenshot%202021-02-23%20at%207.32.41%20AM.png" >
-
-- Settings
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/Screenshot%202021-02-23%20at%207.32.21%20AM.png" >
-
-- RAM
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/Screenshot%202021-02-23%20at%207.32.58%20AM.png" >
-
-- Storage
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/Screenshot%202021-02-23%20at%207.33.18%20AM.png" >
-
-- Pre-Installed Apps
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/Screenshot%202021-02-23%20at%207.34.10%20AM.png" >
-
-</details>
 
 ## Machine Specification:
 Specs below are the standard GitHub-hosted runners used by this project in **public** repositories (free and unlimited there):
@@ -132,7 +54,7 @@ Secrets Name | Uses | Notes
 
 5. Copy the link(**without tcp://**) and go to VNC Viewer(Download and install it), input the link to connect area u copied from the website.
 
-6. Fill in those login info, within username `koolisw`and password from `VNC_PASSWORD` you typed.
+6. Fill in those login info, within username `vpsuser`and password from `VNC_PASSWORD` you typed.
 
 7. Enjoy!
 
@@ -155,10 +77,9 @@ Secrets Name | Uses | Notes
 
 1. First, start the actions of Linux System.
 2. Second, Copy the link from the console
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/0F804C5F-FE8F-45FA-9720-F91F212597DF.png" >
-3. Go to MacOS Terminal or Windows CMD Terminal or else ssh client and enter command provided. Enter your ssh password then.
-<img src="https://raw.githubusercontent.com/RealKoolisw/image/main/VirtualMachine-GHAction/sceenshots/78FE6C5A-7270-4986-AB8F-57EC4C9B4F44.png" >
-4. ENJOY!
+3. Go to MacOS Terminal or Windows CMD Terminal or else ssh client and enter command provided. Enter your ssh password then (type **yes** when asked to confirm the connection).
+4. Type **sudo -i** for root permission and type your password.
+5. ENJOY! (but only 6 hours)
 
 </details>
 
@@ -180,7 +101,7 @@ To pull the newest version of this project into your own fork:
 **Option B (from a terminal):**
 
 ```bash
-git remote add upstream https://github.com/cybershadowvps/FreeVPS.git   # only the first time
+git remote add upstream https://github.com/Mimoli001/turbo-disco.git   # only the first time
 git fetch upstream
 git merge upstream/main      # or: git rebase upstream/main
 git push
