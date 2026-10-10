@@ -47,6 +47,7 @@ PORT="${PUBLIC_HOSTPORT##*:}"
 
 echo ""
 echo "=========================================="
+echo "::notice::TUNNEL_PORT=$PORT"
 echo "To connect: ssh $LINUX_USERNAME@$HOST -p $PORT"
 echo "or connect with: ssh $USER@$HOST -p $PORT"
 echo "(use your LINUX_USER_PASSWORD secret as the password)"

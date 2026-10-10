@@ -35,5 +35,6 @@ jobs:
           exit 1
         fi
         echo "VNC connect address: $HOSTPORT"
+        echo "::notice::TUNNEL_PORT=$HOSTPORT"
     - name: Keep Running MacOS System and keepAlive
       run: sleep 600

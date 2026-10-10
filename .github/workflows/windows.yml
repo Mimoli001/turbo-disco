@@ -67,6 +67,7 @@ jobs:
         Write-Host "Username: $Env:RDP_USER"
         Write-Host "Password: your WINDOWS_USER_PASSWORD secret"
         Write-Host "=========================================="
+        Write-Host "::notice::TUNNEL_PORT=$hostport"
 
     - name: Keep Running Windows System and keepAlive
       run: Start-Sleep -Seconds 600
