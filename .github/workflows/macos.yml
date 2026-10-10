@@ -15,14 +15,13 @@ jobs:
     - uses: actions/checkout@v7
     - name: Setting Up the MacOS Environment
       env:
-        MAC_USER_PASSWORD: ${{ secrets.MAC_USER_PASSWORD }}
-        VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
+        PASSWORD: ${{ secrets.PASSWORD }}
         MAC_REALNAME: ${{ secrets.MAC_REALNAME }}
         CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
         CF_DOMAIN: ${{ secrets.CF_DOMAIN }}
-        CF_SUBDOMAIN: ${{ secrets.CF_SUBDOMAIN }}
+        CF_VNC_HOST: ${{ secrets.CF_VNC_HOST }}
         CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-      run: source macos-run.sh "$MAC_USER_PASSWORD" "$VNC_PASSWORD" "$MAC_REALNAME"
+      run: source macos-run.sh
     - name: Connecting MacOS with Cloudflare Tunnel to VNC Server
       run: |
         if ! grep -q "Registered tunnel connection" /tmp/cloudflared.log 2>/dev/null; then

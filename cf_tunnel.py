@@ -3,24 +3,21 @@
 cf_tunnel.py - ephemeral Cloudflare Tunnel helper for the FreeVPS workflows.
 
 Usage:
-  python3 cf_tunnel.py setup <ssh|rdp|vnc> [...]
-      Create (or refresh) one remotely-managed tunnel for this workflow run,
-      configure its public hostnames, DNS CNAME records and Access apps,
-      then export CF_TUNNEL_TOKEN and CF_<NAME>_HOSTNAME to $GITHUB_ENV.
-
-  python3 cf_tunnel.py cleanup
-      Delete tunnels left over from older workflow runs (self-cleaning).
+  python3 cf_tunnel.py setup <ssh|desktop|rdp|vnc> [...]
 
 Environment:
-  CF_API_TOKEN    Cloudflare API token. Required permissions:
+  CF_API_TOKEN    (required) API token with these permissions:
                     Account -> Cloudflare Tunnel: Edit
                     Account -> Access: Apps and Policies: Edit
                     Zone     -> DNS: Edit
                     Zone     -> Zone: Read
-  CF_DOMAIN       Base domain whose DNS is hosted on Cloudflare
-  CF_SUBDOMAIN    Optional subdomain under CF_DOMAIN (e.g. "myvps" gives
-                  ssh.myvps.<CF_DOMAIN>); empty means use the domain itself
-  CF_ACCOUNT_ID   Optional; auto-discovered from the token when empty
+  CF_DOMAIN       your domain OR a subdomain of it, e.g. "example.com" or
+                  "vps.example.com". The Cloudflare zone is auto-detected.
+  CF_SSH_HOST / CF_DESKTOP_HOST / CF_RDP_HOST / CF_VNC_HOST
+                  optional per-machine override. Either a full hostname
+                  ("ssh.vps.example.com") used as-is, or a bare subdomain
+                  label ("myvps" -> ssh.myvps.<CF_DOMAIN>).
+  CF_ACCOUNT_ID   optional; auto-discovered from the token when empty
 """
 import json
 import os
@@ -31,11 +28,13 @@ import urllib.request
 API = "https://api.cloudflare.com/client/v4"
 TUNNEL_PREFIX = "freevps-"
 
-# route name -> (Access app type, cloudflared origin service, local client port)
+# name -> (Access app type, cloudflared origin service, hostname env var,
+#          local client port printed in the connect hint)
 SERVICES = {
-    "ssh": ("ssh", "ssh://localhost:22", 2222),
-    "rdp": ("tcp", "rdp://localhost:3389", 3389),
-    "vnc": ("tcp", "vnc://localhost:5900", 5900),
+    "ssh": ("ssh", "ssh://localhost:22", "CF_SSH_HOST", 2222),
+    "desktop": ("tcp", "vnc://localhost:5901", "CF_DESKTOP_HOST", 5900),
+    "rdp": ("tcp", "rdp://localhost:3389", "CF_RDP_HOST", 3389),
+    "vnc": ("tcp", "vnc://localhost:5900", "CF_VNC_HOST", 5900),
 }
 
 
@@ -84,21 +83,41 @@ def account_id():
     return accounts[0]["id"]
 
 
-def zone_id(domain):
-    _, payload = api("GET", "/zones?name=" + domain)
-    zones = payload.get("data") or []
-    if not zones:
+def find_zone(hostname):
+    """Find the Cloudflare zone (domain) that owns this hostname."""
+    _, payload = api("GET", "/zones?per_page=50&status=active")
+    zones = sorted(
+        (z["name"] for z in payload.get("data") or []), key=len, reverse=True
+    )
+    for zone in zones:
+        if hostname == zone or hostname.endswith("." + zone):
+            return zone
+    sys.exit(
+        f"cf_tunnel: no Cloudflare zone on this account contains {hostname}. "
+        "Set CF_DOMAIN (or the CF_*_HOST override) to a name whose DNS is "
+        "hosted on this account."
+    )
+
+
+def resolve_hostname(name):
+    _, _, host_env, _ = SERVICES[name]
+    custom = env(host_env)
+    base = env("CF_DOMAIN")
+    if custom and "." in custom:
+        return custom  # already a full hostname
+    if custom:
+        if not base:
+            sys.exit(
+                f"cf_tunnel: {host_env}={custom} is only a label - "
+                "set CF_DOMAIN too, or give a full hostname"
+            )
+        return f"{name}.{custom}.{base}"
+    if not base:
         sys.exit(
-            f"cf_tunnel: zone {domain} is not hosted on this Cloudflare account - "
-            "set CF_DOMAIN to a domain whose DNS is on Cloudflare"
+            f"cf_tunnel: set CF_DOMAIN (your domain or a subdomain of it), "
+            f"or set {host_env} to a full hostname"
         )
-    return zones[0]["id"]
-
-
-def base_hostname():
-    domain = env("CF_DOMAIN", True)
-    sub = env("CF_SUBDOMAIN")
-    return f"{sub}.{domain}" if sub else domain
+    return f"{name}.{base}"
 
 
 def prune_old_tunnels(account, current):
@@ -122,10 +141,8 @@ def create_tunnel(account, name):
         result = payload.get("result") or {}
         return result["id"], result["token"]
     if status == 409:
-        # leftover with the same name: replace it
         _, listing = api(
-            "GET",
-            f"/accounts/{account}/cfd_tunnel?is_deleted=false&per_page=100",
+            "GET", f"/accounts/{account}/cfd_tunnel?is_deleted=false&per_page=100"
         )
         for tunnel in listing.get("data") or []:
             if tunnel.get("name") == name:
@@ -135,7 +152,9 @@ def create_tunnel(account, name):
 
 
 def configure_ingress(account, tunnel_id, routes):
-    ingress = [{"hostname": host, "service": service} for host, service in routes]
+    ingress = [
+        {"hostname": host, "service": service} for _, host, service in routes
+    ]
     ingress.append({"service": "http_status:404"})
     status, payload = api(
         "PUT",
@@ -154,9 +173,7 @@ def ensure_dns(zone, hostname, tunnel_id):
         "proxied": True,
         "ttl": 1,
     }
-    _, payload = api(
-        "GET", f"/zones/{zone}/dns_records?type=CNAME&name={hostname}"
-    )
+    _, payload = api("GET", f"/zones/{zone}/dns_records?type=CNAME&name={hostname}")
     existing = (payload.get("data") or [None])[0]
     if existing:
         status, answer = api(
@@ -169,9 +186,7 @@ def ensure_dns(zone, hostname, tunnel_id):
 
 
 def ensure_access_app(account, hostname, app_type):
-    _, payload = api(
-        "GET", f"/accounts/{account}/access/apps?domain={hostname}"
-    )
+    _, payload = api("GET", f"/accounts/{account}/access/apps?domain={hostname}")
     apps = payload.get("data") or []
     if apps:
         app_id = apps[0]["id"]
@@ -187,9 +202,11 @@ def ensure_access_app(account, hostname, app_type):
             },
         )
         if status not in (200, 201):
-            sys.exit(f"cf_tunnel: could not create Access app {hostname}: {payload}")
+            sys.exit(
+                f"cf_tunnel: could not create Access app {hostname}: {payload}"
+            )
         app_id = payload["result"]["id"]
-    # anyone who can reach the hostname may use it; the VM itself is
+    # anyone who reaches the hostname may use it; the VM itself is
     # protected by its user password
     api(
         "POST",
@@ -203,12 +220,34 @@ def ensure_access_app(account, hostname, app_type):
     )
 
 
+def warn_if_no_identity_provider(account):
+    status, payload = api(
+        "GET", f"/accounts/{account}/access/identity_providers"
+    )
+    if status == 200 and not payload.get("data"):
+        print(
+            "::warning::No Cloudflare Access identity provider is configured. "
+            "One-time setup: Zero Trust dashboard -> Settings -> Authentication "
+            "-> Add provider (\"One-time PIN\" needs no third-party account). "
+            "Until then, cloudflared access cannot authenticate you."
+        )
+
+
 def export_env(values):
     target = os.environ.get("GITHUB_ENV")
     if target:
         with open(target, "a") as handle:
             for key, value in values.items():
                 handle.write(f"{key}={value}\n")
+    # GITHUB_ENV only becomes visible in *later* workflow steps, but the calling
+    # shell script needs these values in the same step - so also write a file it
+    # can source.
+    try:
+        with open("/tmp/cf_tunnel.env", "w") as handle:
+            for key, value in values.items():
+                handle.write(f"{key}={value}\n")
+    except OSError:
+        pass
     for key, value in values.items():
         print(f"{key}={value}")
 
@@ -216,43 +255,45 @@ def export_env(values):
 def connect_instructions(name, hostname, port):
     if name == "ssh":
         return [
-            f"  cloudflared access ssh --hostname {hostname}",
-            f'  ssh -o ProxyCommand="cloudflared access ssh --hostname {hostname}" vpsuser@{hostname}',
+            f'  ssh -o ProxyCommand="cloudflared access ssh --hostname {hostname}" USER@{hostname}',
+            f"  (or run: cloudflared access ssh --hostname {hostname})",
         ]
     return [
         f"  cloudflared access tcp --hostname {hostname} --url localhost:{port}",
-        f"  then connect your client to localhost:{port}",
+        f"  then point your client at localhost:{port}",
     ]
 
 
 def main_setup(selected):
     for name in selected:
         if name not in SERVICES:
-            sys.exit(f"cf_tunnel: unknown service {name!r} (use: {', '.join(SERVICES)})")
+            sys.exit(
+                f"cf_tunnel: unknown service {name!r} (use: {', '.join(SERVICES)})"
+            )
     account = account_id()
-    zone = zone_id(env("CF_DOMAIN", True))
-    base = base_hostname()
-    routes = [(f"{name}.{base}", SERVICES[name][1]) for name in selected]
+    warn_if_no_identity_provider(account)
+    routes = [
+        (name, resolve_hostname(name), SERVICES[name][1]) for name in selected
+    ]
     run_name = TUNNEL_PREFIX + os.environ.get("GITHUB_RUN_ID", "local")
 
     prune_old_tunnels(account, run_name)
     tunnel_id, token = create_tunnel(account, run_name)
     configure_ingress(account, tunnel_id, routes)
 
-    exports = {"CF_TUNNEL_TOKEN": token, "CF_TUNNEL_BASE": base}
+    exports = {"CF_TUNNEL_TOKEN": token}
     print(f"cf_tunnel: tunnel {run_name} created ({tunnel_id})")
-    for (host, _), name in zip(routes, selected):
-        ensure_dns(zone, host, tunnel_id)
+    for name, host, service in routes:
+        ensure_dns(find_zone(host), host, tunnel_id)
         ensure_access_app(account, host, SERVICES[name][0])
         exports[f"CF_{name.upper()}_HOSTNAME"] = host
-        print(f"cf_tunnel: {host} -> {SERVICES[name][1]} (Access app ready)")
+        print(f"cf_tunnel: {host} -> {service} (Access app ready)")
 
     export_env(exports)
     print("==========================================")
-    print("Your Cloudflare tunnel is ready. On your PC install cloudflared,")
-    print("then connect with one of:")
-    for (host, _), name in zip(routes, selected):
-        for line in connect_instructions(name, host, SERVICES[name][2]):
+    print("Cloudflare tunnel ready. On your PC install cloudflared, then:")
+    for name, host, _ in routes:
+        for line in connect_instructions(name, host, SERVICES[name][3]):
             print(line)
     print("==========================================")
 
@@ -268,7 +309,9 @@ def main():
         sys.exit(__doc__)
     if sys.argv[1] == "setup":
         if len(sys.argv) < 3:
-            sys.exit("cf_tunnel: setup needs at least one of: ssh, rdp, vnc")
+            sys.exit(
+                "cf_tunnel: setup needs at least one of: ssh, desktop, rdp, vnc"
+            )
         main_setup(sys.argv[2:])
     elif sys.argv[1] == "cleanup":
         main_cleanup()

@@ -18,12 +18,12 @@ jobs:
     - name: Setting Up the Ubuntu Environment
       run: bash linux-ssh.sh
       env:
-        LINUX_USER_PASSWORD: ${{ secrets.LINUX_USER_PASSWORD }}
+        PASSWORD: ${{ secrets.PASSWORD }}
         LINUX_MACHINE_NAME: ${{ secrets.LINUX_MACHINE_NAME }}
         LINUX_USERNAME: ${{ secrets.LINUX_USERNAME }}
         CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
         CF_DOMAIN: ${{ secrets.CF_DOMAIN }}
-        CF_SUBDOMAIN: ${{ secrets.CF_SUBDOMAIN }}
+        CF_SSH_HOST: ${{ secrets.CF_SSH_HOST }}
         CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
     - name: Keep Running Ubuntu System and keepAlive
       run: sleep 6h

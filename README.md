@@ -38,7 +38,7 @@
 | `MacOS Virtual Machine` | macOS on Apple silicon | VNC Viewer through a Cloudflare tunnel on **your own domain** |
 | `Windows Virtual Machine` | Windows Server desktop (looks like Windows 10/11) | Remote Desktop (`mstsc`) through a Cloudflare tunnel on **your own domain** |
 | `Ubuntu ssh Virtual Machine` | Ubuntu Server | `ssh` through a Cloudflare tunnel on **your own domain** |
-| `Ubuntu Desktop Virtual Machine` | Ubuntu with the XFCE desktop | Google Remote Desktop (+ SSH backup on your own domain) |
+| `Ubuntu Desktop Virtual Machine` | Ubuntu with the XFCE desktop | VNC Viewer through a Cloudflare tunnel on **your own domain** |
 
 Everything is provisioned by the workflows in [`.github/workflows/`](.github/workflows/) and the setup scripts next to this file. You only add a few secrets and press **Run workflow**.
 
@@ -87,25 +87,31 @@ Every run creates a **temporary Cloudflare Tunnel** on your own domain, so no th
 | Secret | Used for | Notes |
 | --- | --- | --- |
 | `CF_API_TOKEN` | The API token described above | Scoped to your Cloudflare account |
-| `CF_DOMAIN` | The base domain used for the tunnels | Must already be hosted (DNS) on the same Cloudflare account, e.g. `example.com` |
-| `CF_SUBDOMAIN` | Optional subdomain under `CF_DOMAIN` | e.g. `myvps` gives `ssh.myvps.example.com`; leave empty to use `ssh.example.com` |
+| `CF_DOMAIN` | Your domain **or a subdomain of it** | The Cloudflare zone is detected automatically. e.g. `example.com` or `vps.example.com` — you never have to split domain and subdomain yourself |
+| `CF_SSH_HOST` | Optional full hostname for the Linux SSH machine | e.g. `my-ssh.example.com`, or a bare label like `myvps` (→ `ssh.myvps.<CF_DOMAIN>`). Empty → `ssh.<CF_DOMAIN>` |
+| `CF_DESKTOP_HOST` | Optional full hostname for the Linux desktop | Empty → `desktop.<CF_DOMAIN>` |
+| `CF_RDP_HOST` | Optional full hostname for the Windows machine | Empty → `rdp.<CF_DOMAIN>` |
+| `CF_VNC_HOST` | Optional full hostname for the macOS machine | Empty → `vnc.<CF_DOMAIN>` |
 | `CF_ACCOUNT_ID` | Optional Cloudflare account id | Auto-discovered from the token when left empty |
 
-Each run publishes hostnames like `ssh.<subdomain>.<domain>` (Linux), `rdp.<subdomain>.<domain>` (Windows) and `vnc.<subdomain>.<domain>` (macOS) and reuses them on the next run; tunnels from finished runs are deleted automatically.
+So with only `CF_DOMAIN=vps.example.com` set, the four runs publish `ssh.vps.example.com`, `desktop.vps.example.com`, `rdp.vps.example.com` and `vnc.vps.example.com` — and reuses them on the next run; tunnels from finished runs are deleted automatically.
 
-### Platform accounts
+> :information_source: **One-time setup in Cloudflare:** SSH/RDP/VNC endpoints are published through **Cloudflare Access**, so the Zero Trust account needs an identity provider. Open the [Zero Trust dashboard](https://one.dash.cloudflare.com/) → **Settings** → **Authentication** → **Add provider** and pick **One-time PIN** (no third-party account needed; Cloudflare emails you a code). Add it once and every future run works. The workflow prints a warning if this is missing.
+
+### Machine settings (optional)
+
+Only one secret is truly required per machine: the password — and even that is optional, because a random one is generated and printed in the job log when you leave it empty.
 
 | Secret | Used for | Notes |
 | --- | --- | --- |
-| `MAC_REALNAME` | macOS user display name | Any name you like |
-| `MAC_USER_PASSWORD` | macOS admin password | Any password you like |
-| `VNC_PASSWORD` | macOS VNC login password | Any password you like |
-| `WINDOWS_USER_PASSWORD` | Windows RDP password | Set as the password of the built-in administrator account |
-| `LINUX_USERNAME` | Linux username | Any name you like |
-| `LINUX_USER_PASSWORD` | Linux shell and `sudo` password | Any password you like |
-| `LINUX_MACHINE_NAME` | Linux computer name | Any name you like |
-| `CHROME_HEADLESS_CODE` | Google Remote Desktop for the Linux desktop | Copy a code from <https://remotedesktop.google.com/headless>, log in with your Google account and copy the code under `Debian Linux`. :warning: Every code works only **once** — generate a new one each time. |
-| `GOOGLE_REMOTE_PIN` | Google Remote Desktop PIN | Any PIN of at least 6 digits; you need it when connecting to the Linux desktop |
+| `PASSWORD` | Login password for **every** machine (Linux shell/`sudo`, Windows RDP, macOS account and VNC) | One secret is enough for all four workflows. Empty → a random password is generated and printed in the log |
+| `LINUX_USERNAME` | Linux username | Empty → `admin` |
+| `LINUX_MACHINE_NAME` | Linux computer name | Empty → `ubuntu-vps` |
+| `MAC_REALNAME` | macOS account display name | Empty → `mac` |
+
+> :warning: **VNC uses the first 8 characters of `PASSWORD`** (the VNC protocol's password limit), for both the macOS and the Linux desktop. The job log prints the exact VNC password to type.
+
+Legacy secrets (`LINUX_USER_PASSWORD`, `MAC_USER_PASSWORD`, `VNC_PASSWORD`, `WINDOWS_USER_PASSWORD`) still work as a fallback if `PASSWORD` is not set.
 
 ---
 
@@ -123,7 +129,7 @@ Each run publishes hostnames like `ssh.<subdomain>.<domain>` (Linux), `rdp.<subd
    ```bash
    cloudflared access tcp --hostname vnc.SUBDOMAIN.DOMAIN --url localhost:5900
    ```
-6. Install [VNC Viewer](https://www.realvnc.com/en/connect/download/viewer/), connect to `localhost:5900`, and log in with username `vpsuser` and the password you stored in `VNC_PASSWORD`.
+6. Install [VNC Viewer](https://www.realvnc.com/en/connect/download/viewer/), connect to `localhost:5900`, and log in with username `vpsuser` and the **first 8 characters** of your `PASSWORD` (printed in the job log).
 7. Enjoy!
 
 </details>
@@ -150,11 +156,16 @@ Each run publishes hostnames like `ssh.<subdomain>.<domain>` (Linux), `rdp.<subd
 1. Start either **`Ubuntu ssh Virtual Machine`** (server only) or **`Ubuntu Desktop Virtual Machine`** (XFCE desktop) from the `Actions` tab.
 2. Install [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) on your PC, then run the connection line printed at the end of the log, for example:
    ```bash
-   ssh -o ProxyCommand="cloudflared access ssh --hostname ssh.SUBDOMAIN.DOMAIN" LINUX_USERNAME@ssh.SUBDOMAIN.DOMAIN
+   ssh -o ProxyCommand="cloudflared access ssh --hostname ssh.SUBDOMAIN.DOMAIN" admin@ssh.SUBDOMAIN.DOMAIN
    ```
-3. Type **`yes`** when asked to confirm the fingerprint, then enter `LINUX_USER_PASSWORD`.
+   (the first `cloudflared access` run opens a browser once to authenticate you to Cloudflare Access.)
+3. Type **`yes`** when asked to confirm the fingerprint, then enter your `PASSWORD`.
 4. Run **`sudo -i`** and enter the same password to get root access.
-5. For the desktop version, open <https://remotedesktop.google.com/access> in a browser on another machine and join the host with `GOOGLE_REMOTE_PIN`.
+5. The **desktop** version works over VNC instead of Google Remote Desktop — no Google account, no code to regenerate on every run:
+   ```bash
+   cloudflared access tcp --hostname desktop.SUBDOMAIN.DOMAIN --url localhost:5900
+   ```
+   then open a VNC viewer at `localhost:5900` and use your `PASSWORD` (its first 8 characters).
 
 </details>
 
@@ -204,8 +215,11 @@ Your fork now runs the newest workflows and scripts.
 
 | Symptom | Likely cause — and fix |
 | --- | --- |
-| `cf_tunnel: zone ... is not hosted on this Cloudflare account` | `CF_DOMAIN` is wrong or that domain's DNS is not on the Cloudflare account of your token. |
+| `cf_tunnel: set CF_DOMAIN ...` | You set neither `CF_DOMAIN` nor a per-machine `CF_*_HOST`. Add `CF_DOMAIN` (your domain **or** a subdomain of it). |
+| `cf_tunnel: no Cloudflare zone on this account contains ...` | `CF_DOMAIN` is wrong, or that domain's DNS is not hosted on the Cloudflare account of your token. |
 | `cf_tunnel: tunnel creation failed` / 403 from the API | `CF_API_TOKEN` is missing, expired or lacks a permission — it needs Cloudflare Tunnel:Edit, Access:Apps and Policies:Edit, DNS:Edit and Zone:Read. |
+| `::warning::No Cloudflare Access identity provider is configured` | One-time fix: Zero Trust dashboard → **Settings** → **Authentication** → **Add provider** → **One-time PIN**. Until then `cloudflared access` cannot authenticate you. |
+| `cloudflared access` opens the browser but the page says access denied | The Access app exists but no provider is configured (row above), or you are logged in with a different Cloudflare account. |
 | `cloudflared failed to register the tunnel` | The token lost access, or Cloudflare had a hiccup — re-run the workflow. |
 | `cloudflared: command not found` on your PC | Install [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) — it is the client you connect with. |
 | The workflow fails immediately after you fork it | Your fork is behind: [update it](#updating-your-fork). |
@@ -224,7 +238,7 @@ Your fork now runs the newest workflows and scripts.
 
 ## Tips and tricks
 
-- Remote control of **macOS** or **Windows** feels slow or laggy? Google Remote Desktop or Microsoft Remote Desktop are usually faster than raw VNC/RDP tunnels.
+- Remote control of **macOS** or the **Linux desktop** feels slow or laggy? Lower the resolution/colour depth in your VNC viewer — raw VNC over a tunnel is bandwidth-hungry. Windows RDP is usually fast as is.
 - **Fork the project** before running it so you can set your own usernames, computer names and display names.
 - Keep your fork synced (see [Updating your fork](#updating-your-fork)) whenever the workflows stop starting.
 

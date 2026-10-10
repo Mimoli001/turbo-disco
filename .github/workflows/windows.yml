@@ -28,12 +28,16 @@ jobs:
       run: |
         $admin = (Get-LocalUser | Where-Object { $_.SID.Value -like '*-500' }).Name
         echo "RDP_USER=$admin" | Out-File -FilePath $env:GITHUB_ENV -Append
-        if ([string]::IsNullOrEmpty($Env:WINDOWS_USER_PASSWORD)) {
-          Write-Host "WINDOWS_USER_PASSWORD secret is not set, keeping the default password of '$admin'."
-        } else {
-          net user $admin $Env:WINDOWS_USER_PASSWORD
+        $pw = $Env:PASSWORD
+        if ([string]::IsNullOrEmpty($pw)) { $pw = $Env:WINDOWS_USER_PASSWORD }
+        if ([string]::IsNullOrEmpty($pw)) {
+          $pw = -join ((48..57)+(65..90)+(97..122) | Get-Random -Count 12 | ForEach-Object { [char]$_ })
+          Write-Host "No PASSWORD secret set - generated a random one (shown below)."
         }
+        net user $admin $pw
+        echo "RDP_PASSWORD=$pw" | Out-File -FilePath $env:GITHUB_ENV -Append
       env:
+        PASSWORD: ${{ secrets.PASSWORD }}
         WINDOWS_USER_PASSWORD: ${{ secrets.WINDOWS_USER_PASSWORD }}
 
     - name: Create Cloudflare tunnel for RDP (3389)
@@ -41,7 +45,7 @@ jobs:
       env:
         CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
         CF_DOMAIN: ${{ secrets.CF_DOMAIN }}
-        CF_SUBDOMAIN: ${{ secrets.CF_SUBDOMAIN }}
+        CF_RDP_HOST: ${{ secrets.CF_RDP_HOST }}
         CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
 
     - name: Start cloudflared tunnel
@@ -74,7 +78,7 @@ jobs:
         Write-Host "  cloudflared access tcp --hostname $Env:CF_RDP_HOSTNAME --url localhost:3389"
         Write-Host "  then: mstsc /v:localhost:3389"
         Write-Host "Username: $Env:RDP_USER"
-        Write-Host "Password: your WINDOWS_USER_PASSWORD secret"
+        Write-Host "Password: $Env:RDP_PASSWORD"
         Write-Host "=========================================="
         Write-Host "::notice::TUNNEL_HOSTNAMES=$Env:CF_RDP_HOSTNAME"
 

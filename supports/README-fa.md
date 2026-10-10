@@ -38,7 +38,7 @@
 | `MacOS Virtual Machine` | مک‌اواس روی تراشهٔ اپل | VNC Viewer از طریق تونل Cloudflare روی **دامنهٔ شخصی شما** |
 | `Windows Virtual Machine` | دسکتاپ Windows Server (شبیه ویندوز ۱۰/۱۱) | Remote Desktop (`mstsc`) از طریق تونل Cloudflare روی **دامنهٔ شخصی شما** |
 | `Ubuntu ssh Virtual Machine` | اوبونتو سرور | `ssh` از طریق تونل Cloudflare روی **دامنهٔ شخصی شما** |
-| `Ubuntu Desktop Virtual Machine` | اوبونتو با دسکتاپ XFCE | Google Remote Desktop (به‌همراه SSH پشتیبان روی دامنهٔ شخصی شما) |
+| `Ubuntu Desktop Virtual Machine` | اوبونتو با دسکتاپ XFCE | VNC Viewer از طریق تونل Cloudflare روی **دامنهٔ شخصی شما** |
 
 همه‌چیز توسط ورک‌فلوهای پوشهٔ [`.github/workflows/`](../.github/workflows/) و اسکریپت‌های کنار همین فایل راه‌اندازی می‌شود؛ کافی است چند Secret تنظیم کنید و **Run workflow** را بزنید.
 
@@ -87,25 +87,31 @@
 | Secret | کاربرد | توضیحات |
 | --- | --- | --- |
 | `CF_API_TOKEN` | توکن API توضیح‌داده‌شده در بالا | مربوط به حساب کلادفلر شما |
-| `CF_DOMAIN` | دامنهٔ پایه برای تونل‌ها | DNS این دامنه باید روی همان حساب کلادفلر باشد، مثلاً `example.com` |
-| `CF_SUBDOMAIN` | ساب‌دومین اختیاری زیر `CF_DOMAIN` | مثلاً `myvps` → `ssh.myvps.example.com`؛ خالی بگذارید تا `ssh.example.com` استفاده شود |
+| `CF_DOMAIN` | دامنهٔ شما **یا یک ساب‌دومین از آن** | Zone به‌طور خودکار تشخیص داده می‌شود. مثلاً `example.com` یا `vps.example.com` — دیگر لازم نیست دامنه و ساب‌دومین را جداگانه بنویسید |
+| `CF_SSH_HOST` | ساب‌دومین اختیاری برای ماشین SSH لینوکس | مثلاً `my-ssh.example.com` یا فقط یک برچسب مثل `myvps` (→ `ssh.myvps.<CF_DOMAIN>`)؛ خالی → `ssh.<CF_DOMAIN>` |
+| `CF_DESKTOP_HOST` | ساب‌دومین اختیاری برای دسکتاپ لینوکس | خالی → `desktop.<CF_DOMAIN>` |
+| `CF_RDP_HOST` | ساب‌دومین اختیاری برای ماشین ویندوز | خالی → `rdp.<CF_DOMAIN>` |
+| `CF_VNC_HOST` | ساب‌دومین اختیاری برای ماشین مک‌اواس | خالی → `vnc.<CF_DOMAIN>` |
 | `CF_ACCOUNT_ID` | شناسهٔ حساب کلادفلر (اختیاری) | در صورت خالی‌بودن به‌طور خودکار از توکن پیدا می‌شود |
 
-هر اجرا ساب‌دومین‌هایی مثل `ssh.<ساب‌دومین>.<دامنه>` (لینوکس)، `rdp.<ساب‌دومین>.<دامنه>` (ویندوز) و `vnc.<ساب‌دومین>.<دامنه>` (مک‌اواس) را منتشر می‌کند و در اجراهای بعدی همان‌ها را بازاستفاده می‌کند؛ تونل اجراهای تمام‌شده به‌طور خودکار حذف می‌شود.
+یعنی با تنظیم فقط `CF_DOMAIN=vps.example.com`، چهار اجرا به‌ترتیب `ssh.vps.example.com`، `desktop.vps.example.com`، `rdp.vps.example.com` و `vnc.vps.example.com` را منتشر می‌کنند و در اجراهای بعدی همان‌ها را بازاستفاده می‌کنند؛ تونل اجراهای تمام‌شده به‌طور خودکار حذف می‌شود.
 
-### حساب‌های پلتفرم
+> :information_source: **یک‌بار تنظیم در کلادفلر:** نقاط اتصال SSH/RDP/VNC از طریق **Cloudflare Access** منتشر می‌شوند؛ پس حساب Zero Trust به یک identity provider نیاز دارد. [داشبورد Zero Trust](https://one.dash.cloudflare.com/) → **Settings** → **Authentication** → **Add provider** را باز کنید و **One-time PIN** را انتخاب کنید (به حساب شخص ثالثی نیاز ندارد؛ کلادفلر کد را ایمیل می‌کند). فقط یک‌بار اضافه کنید تا همهٔ اجراهای بعدی کار کنند. اگر این تنظیم نباشد، ورک‌فلو یک هشدار چاپ می‌کند.
+
+### تنظیمات ماشین (اختیاری)
+
+در واقع تنها Secret واقعاً لازم برای هر ماشین، رمز عبور است — و آن هم اختیاری است؛ چون اگر خالی بگذارید یک رمز تصادفی ساخته و در لاگ job چاپ می‌شود.
 
 | Secret | کاربرد | توضیحات |
 | --- | --- | --- |
-| `MAC_REALNAME` | نام نمایشی کاربر مک‌اواس | هر نامی که می‌خواهید |
-| `MAC_USER_PASSWORD` | رمز عبور مدیر سیستم مک‌اواس | هر رمزی که می‌خواهید |
-| `VNC_PASSWORD` | رمز ورود VNC در مک‌اواس | هر رمزی که می‌خواهید |
-| `WINDOWS_USER_PASSWORD` | رمز ورود RDP ویندوز | روی حساب administrator داخلی تنظیم می‌شود |
-| `LINUX_USERNAME` | نام کاربری لینوکس | هر نامی که می‌خواهید |
-| `LINUX_USER_PASSWORD` | رمز عبور شل و `sudo` لینوکس | هر رمزی که می‌خواهید |
-| `LINUX_MACHINE_NAME` | نام رایانه در لینوکس | هر نامی که می‌خواهید |
-| `CHROME_HEADLESS_CODE` | Google Remote Desktop برای دسکتاپ لینوکس | کد را از <https://remotedesktop.google.com/headless> بگیرید، با حساب گوگل وارد شوید و کد زیر `Debian Linux` را کپی کنید. :warning: هر کد فقط **یک بار** کار می‌کند؛ هر بار کد جدیدی بسازید. |
-| `GOOGLE_REMOTE_PIN` | PIN مربوط به Google Remote Desktop | هر PIN حداقل ۶ رقمی؛ هنگام اتصال به دسکتاپ لینوکس به آن نیاز دارید |
+| `PASSWORD` | رمز ورود **همهٔ** ماشین‌ها (شل/`sudo` لینوکس، RDP ویندوز، حساب و VNC مک‌اواس) | یک Secret برای هر چهار ورک‌فلو کافی است؛ خالی → رمز تصادفی ساخته و در لاگ چاپ می‌شود |
+| `LINUX_USERNAME` | نام کاربری لینوکس | خالی → `admin` |
+| `LINUX_MACHINE_NAME` | نام رایانه در لینوکس | خالی → `ubuntu-vps` |
+| `MAC_REALNAME` | نام نمایشی حساب مک‌اواس | خالی → `mac` |
+
+> :warning: **VNC از ۸ کاراکتر اول `PASSWORD` استفاده می‌کند** (محدودیت پروتکل VNC) — هم برای مک‌اواس و هم برای دسکتاپ لینوکس. لاگ job رمز دقیقی را که باید وارد کنید چاپ می‌کند.
+
+Secretهای قدیمی (`LINUX_USER_PASSWORD`، `MAC_USER_PASSWORD`، `VNC_PASSWORD`، `WINDOWS_USER_PASSWORD`) در صورت تنظیم‌نبودن `PASSWORD` همچنان به‌عنوان پشتیبان کار می‌کنند.
 
 ---
 
@@ -123,7 +129,7 @@
    ```bash
    cloudflared access tcp --hostname vnc.SUBDOMAIN.DOMAIN --url localhost:5900
    ```
-6. نرم‌افزار [VNC Viewer](https://www.realvnc.com/en/connect/download/viewer/) را نصب کنید، به `localhost:5900` وصل شوید و با نام کاربری `vpsuser` و رمز همان `VNC_PASSWORD` وارد شوید.
+6. نرم‌افزار [VNC Viewer](https://www.realvnc.com/en/connect/download/viewer/) را نصب کنید، به `localhost:5900` وصل شوید و با نام کاربری `vpsuser` و **۸ کاراکتر اول** `PASSWORD` وارد شوید (در لاگ job چاپ شده است).
 7. لذت ببرید!
 
 </details>
@@ -150,11 +156,16 @@
 1. از تب `Actions` یکی از **`Ubuntu ssh Virtual Machine`** (فقط سرور) یا **`Ubuntu Desktop Virtual Machine`** (دسکتاپ XFCE) را اجرا کنید.
 2. [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) را روی رایانهٔ خود نصب کنید، سپس دستور اتصالِ چاپ‌شده در انتهای لاگ را اجرا کنید، مثلاً:
    ```bash
-   ssh -o ProxyCommand="cloudflared access ssh --hostname ssh.SUBDOMAIN.DOMAIN" LINUX_USERNAME@ssh.SUBDOMAIN.DOMAIN
+   ssh -o ProxyCommand="cloudflared access ssh --hostname ssh.SUBDOMAIN.DOMAIN" admin@ssh.SUBDOMAIN.DOMAIN
    ```
-3. هنگام تأیید اثر انگشت **`yes`** را تایپ کنید و سپس `LINUX_USER_PASSWORD` را وارد کنید.
+   (نخستین اجرای `cloudflared access` برای احراز هویت در Cloudflare Access یک‌بار مرورگر را باز می‌کند.)
+3. هنگام تأیید اثر انگشت **`yes`** را تایپ کنید و سپس `PASSWORD` را وارد کنید.
 4. برای دسترسی root دستور **`sudo -i`** را بزنید و همان رمز را وارد کنید.
-5. در نسخهٔ دسکتاپ، <https://remotedesktop.google.com/access> را در مرورگر روی یک ماشین دیگر باز کنید و با `GOOGLE_REMOTE_PIN` به میزبان متصل شوید.
+5. نسخهٔ **دسکتاپ** به‌جای Google Remote Desktop از طریق VNC کار می‌کند — بدون حساب گوگل و بدون کدی که هر بار باید دوباره ساخته شود:
+   ```bash
+   cloudflared access tcp --hostname desktop.SUBDOMAIN.DOMAIN --url localhost:5900
+   ```
+   سپس یک VNC viewer در `localhost:5900` باز کنید و با `PASSWORD` (۸ کاراکتر اولش) وارد شوید.
 
 </details>
 
@@ -204,8 +215,11 @@ git push
 
 | مشکل | دلیل محتمل — و راه‌حل |
 | --- | --- |
-| `cf_tunnel: zone ... is not hosted on this Cloudflare account` | مقدار `CF_DOMAIN` اشتباه است یا DNS آن دامنه روی حساب کلادفلرِ توکن شما نیست. |
+| `cf_tunnel: set CF_DOMAIN ...` | نه `CF_DOMAIN` و نه `CF_*_HOST` مربوط به آن ماشین را تنظیم کرده‌اید. `CF_DOMAIN` (دامنهٔ شما **یا** ساب‌دومینی از آن) را اضافه کنید. |
+| `cf_tunnel: no Cloudflare zone on this account contains ...` | مقدار `CF_DOMAIN` اشتباه است یا DNS آن دامنه روی حساب کلادفلرِ توکن شما نیست. |
 | `cf_tunnel: tunnel creation failed` یا خطای 403 از API | توکن `CF_API_TOKEN` نامعتبر یا فاقد دسترسی است — باید Cloudflare Tunnel:Edit، Access:Apps and Policies:Edit، DNS:Edit و Zone:Read داشته باشد. |
+| هشدار `No Cloudflare Access identity provider is configured` | راه‌حل یک‌باره: داشبورد Zero Trust → **Settings** → **Authentication** → **Add provider** → **One-time PIN**. تا قبل از آن `cloudflared access` نمی‌تواند شما را احراز هویت کند. |
+| `cloudflared access` مرورگر را باز می‌کند ولی صفحه می‌گوید access denied | اپ Access ساخته شده اما identity provider تنظیم نشده (سطر بالا)، یا با حساب کلادفلر دیگری وارد شده‌اید. |
 | `cloudflared failed to register the tunnel` | دسترسی توکن از بین رفته یا کلادفلر موقتاً مشکل داشته — ورک‌فلو را دوباره اجرا کنید. |
 | خطای `cloudflared: command not found` روی رایانهٔ شما | [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) را نصب کنید — این برنامه کلاینت اتصال شماست. |
 | ورک‌فلو بلافاصله بعد از Fork شکست می‌خورد | Fork شما عقب است: [آن را به‌روز کنید](#به‌روزرسانی-fork). |
@@ -224,7 +238,7 @@ git push
 
 ## پیشنهادها و ترفندها
 
-- کنترل از راه دور **مک‌اواس** یا **ویندوز** کند و لگ‌دار است؟ Google Remote Desktop یا معمولاً Microsoft Remote Desktop سریع‌ترند.
+- کنترل از راه دور **مک‌اواس** یا **دسکتاپ لینوکس** کند و لگ‌دار است؟ رزولوشن/تعداد رنگ را در VNC viewer کم کنید — VNC خام روی تونل پهنای‌باند زیادی مصرف می‌کند. RDP ویندوز معمولاً همین‌طور سریع است.
 - حتماً قبل از اجرا پروژه را **Fork** کنید تا بتوانید نام کاربری، نام رایانه و نام‌های نمایشی را عوض کنید.
 - هر وقت ورک‌فلوها بالا نمی‌آیند، Fork خود را [به‌روز](#به‌روزرسانی-fork) نگه دارید.
 
