@@ -1,0 +1,62 @@
+name: CF e2e test (temporary)
+on:
+  push:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  ssh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      CF_DOMAIN: ${{ secrets.CF_DOMAIN }}
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      PASSWORD: ${{ secrets.PASSWORD }}
+    steps:
+    - uses: actions/checkout@v7
+    - name: Install the client tools
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq sshpass
+        curl -fsSL -o /usr/local/bin/cloudflared \
+          "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
+        chmod +x /usr/local/bin/cloudflared
+    - name: Connect to the SSH machine
+      run: bash e2e_test.sh ssh 60
+
+  desktop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      CF_DOMAIN: ${{ secrets.CF_DOMAIN }}
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+    steps:
+    - uses: actions/checkout@v7
+    - name: Install the client tools
+      run: |
+        curl -fsSL -o /usr/local/bin/cloudflared \
+          "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
+        chmod +x /usr/local/bin/cloudflared
+    - name: Connect to the desktop (VNC)
+      run: bash e2e_test.sh desktop 110
+
+  rdp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      CF_DOMAIN: ${{ secrets.CF_DOMAIN }}
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+    steps:
+    - uses: actions/checkout@v7
+    - name: Install the client tools
+      run: |
+        curl -fsSL -o /usr/local/bin/cloudflared \
+          "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
+        chmod +x /usr/local/bin/cloudflared
+    - name: Connect to the Windows machine (RDP)
+      run: bash e2e_test.sh rdp 60

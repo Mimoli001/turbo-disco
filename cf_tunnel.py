@@ -2,22 +2,31 @@
 """
 cf_tunnel.py - ephemeral Cloudflare Tunnel helper for the FreeVPS workflows.
 
+Every run creates its own Cloudflare Tunnel on your domain and publishes one
+hostname per machine, then deletes tunnels left over from runs that ended more
+than 7 hours ago.  Nothing but the tunnel and a DNS record is involved - no
+third-party tunnel service, and no Cloudflare Access app in front of the
+machine: the VM's own login password is what protects it.
+
 Usage:
   python3 cf_tunnel.py setup <ssh|desktop|rdp|vnc> [...]
 
 Environment:
   CF_API_TOKEN    (required) API token with these permissions:
                     Account -> Cloudflare Tunnel: Edit
-                    Account -> Access: Apps and Policies: Edit
                     Zone     -> DNS: Edit
                     Zone     -> Zone: Read
-  CF_DOMAIN       your domain OR a subdomain of it, e.g. "example.com" or
-                  "vps.example.com". The Cloudflare zone is auto-detected.
+  CF_DOMAIN       your domain, e.g. "example.com" (a subdomain of it also
+                  works - it only decides WHICH of your zones is used)
   CF_SSH_HOST / CF_DESKTOP_HOST / CF_RDP_HOST / CF_VNC_HOST
-                  optional per-machine override. Either a full hostname
-                  ("ssh.vps.example.com") used as-is, or a bare subdomain
-                  label ("myvps" -> ssh.myvps.<CF_DOMAIN>).
-  CF_ACCOUNT_ID   optional; auto-discovered from the token when empty
+                  optional per-machine override: either a bare label
+                  ("myssh" -> myssh.<zone>) or a full hostname one level
+                  under the zone ("myssh.example.com")
+  CF_ACCOUNT_ID   optional; auto-discovered from CF_DOMAIN's zone when empty
+
+Hostnames sit exactly ONE label above the zone, because that is all
+Cloudflare's universal certificate covers on the free plan - a deeper name
+has no certificate and the TLS handshake fails.
 """
 import datetime
 import json
@@ -29,14 +38,20 @@ import urllib.request
 API = "https://api.cloudflare.com/client/v4"
 TUNNEL_PREFIX = "freevps-"
 
-# name -> (Access app type, cloudflared origin service, hostname env var,
-#          local client port printed in the connect hint)
+# name -> (cloudflared origin service, hostname env var, local client port the
+#          connect hint tells you to forward to)
 SERVICES = {
-    "ssh": ("ssh", "ssh://localhost:22", "CF_SSH_HOST", 2222),
-    "desktop": ("tcp", "vnc://localhost:5901", "CF_DESKTOP_HOST", 5900),
-    "rdp": ("tcp", "rdp://localhost:3389", "CF_RDP_HOST", 3389),
-    "vnc": ("tcp", "vnc://localhost:5900", "CF_VNC_HOST", 5900),
+    "ssh": ("ssh://localhost:22", "CF_SSH_HOST", 2222),
+    "desktop": ("vnc://localhost:5901", "CF_DESKTOP_HOST", 5900),
+    "rdp": ("rdp://localhost:3389", "CF_RDP_HOST", 3389),
+    "vnc": ("vnc://localhost:5900", "CF_VNC_HOST", 5900),
 }
+
+# A GitHub-hosted job is killed after 6 hours, so any tunnel older than that
+# definitely belongs to a finished run.  Younger ones may belong to a workflow
+# that is still running - deleting those would break a concurrent run, and the
+# whole point is that all four systems can run at the same time.
+PRUNE_AFTER = datetime.timedelta(hours=7)
 
 
 def items(payload):
@@ -120,37 +135,58 @@ def find_zone(hostname):
     sys.exit(
         f"cf_tunnel: no Cloudflare zone on this account contains {hostname}. "
         f"Zones visible to this token: {seen}. "
-        "Set CF_DOMAIN (or the CF_*_HOST override) to a name whose DNS is "
-        "hosted on this account."
+        "Set CF_DOMAIN to a domain whose DNS is hosted on this account."
     )
 
 
-def resolve_hostname(name):
-    _, _, host_env, _ = SERVICES[name]
+def resolve_route(name):
+    """The (hostname, zone) pair to publish for one machine.
+
+    The hostname always ends up exactly one label above the zone: that is all
+    Cloudflare's universal certificate covers on the free plan, and a deeper
+    name therefore has no certificate and cannot complete a TLS handshake.
+    """
+    _, host_env, _ = SERVICES[name]
     custom = env(host_env)
     base = env("CF_DOMAIN")
+
     if custom and "." in custom:
-        return custom  # already a full hostname
-    if custom:
-        if not base:
-            sys.exit(
-                f"cf_tunnel: {host_env}={custom} is only a label - "
-                "set CF_DOMAIN too, or give a full hostname"
-            )
-        return f"{name}.{custom}.{base}"
-    if not base:
+        anchor = custom  # a full hostname - the zone is derived from it
+    elif base:
+        anchor = base
+    else:
         sys.exit(
-            f"cf_tunnel: set CF_DOMAIN (your domain or a subdomain of it), "
-            f"or set {host_env} to a full hostname"
+            "cf_tunnel: set CF_DOMAIN (your domain), or set "
+            f"{host_env} to a full hostname"
         )
-    return f"{name}.{base}"
 
+    zone = find_zone(anchor)
+    zone_name = zone["name"]
 
-# A GitHub-hosted job is killed after 6 hours, so any tunnel older than that
-# definitely belongs to a finished run. Younger ones may belong to a workflow
-# that is still running - deleting those would break a concurrent run, and the
-# whole point is that all four systems can run at the same time.
-PRUNE_AFTER = datetime.timedelta(hours=7)
+    if custom and "." in custom:
+        host = custom
+    elif custom:
+        host = f"{custom}.{zone_name}"
+    else:
+        host = f"{name}.{zone_name}"
+        if base.lower() != zone_name.lower():
+            print(
+                f"cf_tunnel: note: CF_DOMAIN={base} is a subdomain of "
+                f"{zone_name}; using {host} because a published name must sit "
+                f"directly under the zone (its certificate only covers "
+                f"{zone_name} and *.{zone_name})"
+            )
+
+    depth = len(host.split(".")) - len(zone_name.split("."))
+    if depth != 1:
+        sys.exit(
+            f"cf_tunnel: {host} sits {depth} labels above {zone_name}, but "
+            "Cloudflare's universal certificate only covers the zone itself "
+            f"and one level below it (*.{zone_name}). Use a name like "
+            f"<something>.{zone_name}, or add your own lower-level "
+            "certificate to the zone."
+        )
+    return host, zone
 
 
 def parse_time(value):
@@ -188,6 +224,7 @@ def create_tunnel(account, name):
         result = payload.get("result") or {}
         return result["id"], result["token"]
     if status == 409:
+        # leftover with the same name: replace it
         _, listing = api(
             "GET", f"/accounts/{account}/cfd_tunnel?is_deleted=false&per_page=100"
         )
@@ -200,7 +237,7 @@ def create_tunnel(account, name):
 
 def configure_ingress(account, tunnel_id, routes):
     ingress = [
-        {"hostname": host, "service": service} for _, host, service in routes
+        {"hostname": host, "service": service} for host, service in routes
     ]
     ingress.append({"service": "http_status:404"})
     status, payload = api(
@@ -220,7 +257,9 @@ def ensure_dns(zone, hostname, tunnel_id):
         "proxied": True,
         "ttl": 1,
     }
-    _, payload = api("GET", f"/zones/{zone}/dns_records?type=CNAME&name={hostname}")
+    _, payload = api(
+        "GET", f"/zones/{zone}/dns_records?type=CNAME&name={hostname}"
+    )
     existing = (items(payload) or [None])[0]
     if existing:
         status, answer = api(
@@ -230,67 +269,6 @@ def ensure_dns(zone, hostname, tunnel_id):
         status, answer = api("POST", f"/zones/{zone}/dns_records", record)
     if status not in (200, 201):
         sys.exit(f"cf_tunnel: could not create DNS record {hostname}: {answer}")
-
-
-def ensure_access_app(account, hostname, app_type):
-    """Create the Access app in front of this hostname.
-
-    Returns None on success, or a short reason when it could not be created
-    (the caller only warns - the tunnel and the DNS record are still usable,
-    which lets the rest of the setup finish).
-    """
-    _, payload = api("GET", f"/accounts/{account}/access/apps?domain={hostname}")
-    apps = items(payload)
-    if apps:
-        app_id = apps[0]["id"]
-    else:
-        status, payload = api(
-            "POST",
-            f"/accounts/{account}/access/apps",
-            {
-                "domain": hostname,
-                "type": app_type,
-                "name": f"freevps {hostname}",
-                "session_duration": "24h",
-            },
-        )
-        if status not in (200, 201):
-            message = "; ".join(
-                e.get("message", "") for e in (payload.get("errors") or [])
-            ) or str(payload)
-            return message
-        app_id = payload["result"]["id"]
-    # anyone who reaches the hostname may use it; the VM itself is
-    # protected by its user password
-    status, payload = api(
-        "POST",
-        f"/accounts/{account}/access/apps/{app_id}/policies",
-        {
-            "decision": "allow",
-            "name": "freevps-everyone",
-            "include": [{"everyone": {}}],
-            "precedence": 1,
-        },
-    )
-    if status not in (200, 201):
-        message = "; ".join(
-            e.get("message", "") for e in (payload.get("errors") or [])
-        ) or str(payload)
-        return message
-    return None
-
-
-def warn_if_no_identity_provider(account):
-    status, payload = api(
-        "GET", f"/accounts/{account}/access/identity_providers"
-    )
-    if status == 200 and not items(payload):
-        print(
-            "::warning::No Cloudflare Access identity provider is configured. "
-            "One-time setup: Zero Trust dashboard -> Settings -> Authentication "
-            "-> Add provider (\"One-time PIN\" needs no third-party account). "
-            "Until then, cloudflared access cannot authenticate you."
-        )
 
 
 def export_env(values):
@@ -315,7 +293,7 @@ def export_env(values):
 def connect_instructions(name, hostname, port):
     if name == "ssh":
         return [
-            f'  ssh -o ProxyCommand="cloudflared access ssh --hostname {hostname}" USER@{hostname}',
+            f'  ssh -o ProxyCommand="cloudflared access ssh --hostname {hostname}" admin@{hostname}',
             f"  (or run: cloudflared access ssh --hostname {hostname})",
         ]
     return [
@@ -330,35 +308,28 @@ def main_setup(selected):
             sys.exit(
                 f"cf_tunnel: unknown service {name!r} (use: {', '.join(SERVICES)})"
             )
-    routes = [
-        (name, resolve_hostname(name), SERVICES[name][1]) for name in selected
-    ]
-    # Resolve every hostname's zone up front; the first one also tells us which
-    # Cloudflare account to work in (CF_ACCOUNT_ID is optional).
-    zones = {host: find_zone(host) for _, host, _ in routes}
-    account = account_id(zones[routes[0][1]])
-    warn_if_no_identity_provider(account)
+    routes = [(name,) + resolve_route(name) for name in selected]
+    account = account_id(routes[0][2])
     run_name = TUNNEL_PREFIX + os.environ.get("GITHUB_RUN_ID", "local")
 
     prune_old_tunnels(account, run_name)
     tunnel_id, token = create_tunnel(account, run_name)
-    configure_ingress(account, tunnel_id, routes)
+    configure_ingress(
+        account, tunnel_id, [(host, SERVICES[name][0]) for name, host, _ in routes]
+    )
 
     exports = {"CF_TUNNEL_TOKEN": token}
     print(f"cf_tunnel: tunnel {run_name} created ({tunnel_id})")
-    for name, host, service in routes:
-        ensure_dns(zones[host]["id"], host, tunnel_id)
-        problem = ensure_access_app(account, host, SERVICES[name][0])
+    for name, host, zone in routes:
+        ensure_dns(zone["id"], host, tunnel_id)
         exports[f"CF_{name.upper()}_HOSTNAME"] = host
-        if problem:
-            print(f"::warning::No Access app for {host}: {problem}")
-        print(f"cf_tunnel: {host} -> {service}")
+        print(f"cf_tunnel: {host} -> {SERVICES[name][0]} (DNS record ready)")
 
     export_env(exports)
     print("==========================================")
     print("Cloudflare tunnel ready. On your PC install cloudflared, then:")
     for name, host, _ in routes:
-        for line in connect_instructions(name, host, SERVICES[name][3]):
+        for line in connect_instructions(name, host, SERVICES[name][2]):
             print(line)
     print("==========================================")
 
