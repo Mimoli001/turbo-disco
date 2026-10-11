@@ -1,6 +1,5 @@
 name: Windows Virtual Machine
 on:
-  push:
   workflow_dispatch:
 
 defaults:
@@ -50,11 +49,11 @@ jobs:
         CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
 
 
-    # cloudflared is started, read and kept alive inside ONE step on purpose:
-    # a process launched by Start-Process in its own step is already gone by the
-    # time the next step runs, which is exactly why RDP used to stop working a
-    # few seconds after "Tunnel is up" was printed.
-    - name: Start the tunnel, verify RDP, and keep Windows alive
+    # Starting the tunnel, printing the connection info and keeping the machine
+    # alive happen inside ONE step on purpose: a cloudflared process launched
+    # by Start-Process in its own step is already gone by the time the next
+    # step runs, so the tunnel would die seconds after "Tunnel is up".
+    - name: Start the tunnel and keep Windows alive
       run: |
         Remove-Item cf.log, cf.err -ErrorAction SilentlyContinue
         Start-Process -FilePath .\cloudflared.exe -ArgumentList 'tunnel','run','--token',$Env:CF_TUNNEL_TOKEN -RedirectStandardOutput cf.log -RedirectStandardError cf.err -WindowStyle Hidden
@@ -86,74 +85,4 @@ jobs:
         Write-Host "=========================================="
         Write-Host "::notice::TUNNEL_HOSTNAMES=$Env:CF_RDP_HOSTNAME"
 
-        # TEMP: verify the published endpoint from inside the job (reverted later)
-        Write-Host "target hostname : $Env:CF_RDP_HOSTNAME"
-        Write-Host "=== listeners on 3389 ==="
-        $lines = @(netstat -ano | Select-String 'LISTENING' | Where-Object { $_.Line -match ':3389\s' })
-        foreach ($l in $lines) { Write-Host $l.Line.Trim() }
-        if (-not ($lines | Where-Object { $_.Line -match '127\.0\.0\.1:3389|0\.0\.0\.0:3389|\[::\]:3389' })) {
-          Write-Host "127.0.0.1:3389 is not listening"
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0
-          try { Start-Service TermService -ErrorAction Stop } catch { Write-Host "start TermService: $($_.Exception.Message)" }
-          Start-Sleep -Seconds 6
-          $lines = @(netstat -ano | Select-String 'LISTENING' | Where-Object { $_.Line -match ':3389\s' })
-          foreach ($l in $lines) { Write-Host "after restart: " + $l.Line.Trim() }
-        }
-        try {
-          $probe = New-Object System.Net.Sockets.TcpClient
-          $probe.Connect('127.0.0.1', 3389)
-          Write-Host "local 127.0.0.1:3389 connect: OK"
-          $probe.Close()
-        } catch {
-          Write-Host "local 127.0.0.1:3389 connect: FAILED - $($_.Exception.Message)"
-        }
-        Write-Host "tunnel cloudflared pids: " + (@(Get-Process cloudflared -ErrorAction SilentlyContinue).Id -join ',')
-
-        Start-Process -FilePath .\cloudflared.exe -ArgumentList 'access','tcp','--hostname',$Env:CF_RDP_HOSTNAME,'--url','localhost:3390' -RedirectStandardOutput p.log -RedirectStandardError p.err -WindowStyle Hidden
-        Start-Sleep -Seconds 3
-        # X.224 Connection Request carrying an RDP Negotiation Request
-        # (19 bytes: TPKT len 0x13, LI 0x0e, CR 0xe0, RDP-neg len 8, protocols 3 LE)
-        $payload = [byte[]](0x03,0x00,0x00,0x13,0x0e,0xe0,0x00,0x00,0x00,0x00,0x00,0x01,0x00,0x08,0x00,0x03,0x00,0x00,0x00)
-        $ok = $false
-        for ($i = 1; $i -le 20; $i++) {
-          $c = $null
-          try {
-            $c = New-Object System.Net.Sockets.TcpClient
-            $c.ReceiveTimeout = 5000
-            $c.SendTimeout = 5000
-            $c.Connect('127.0.0.1', 3390)
-            $s = $c.GetStream()
-            $s.Write($payload, 0, $payload.Length)
-            $s.Flush()
-            $buf = New-Object byte[] 64
-            $n = $s.Read($buf, 0, 64)
-            # a Connection Confirm carries TPDU code 0xd0 at index 5
-            if ($n -ge 6 -and $buf[5] -eq 0xd0) {
-              $hex = ($buf[0..($n-1)] | ForEach-Object { $_.ToString('x2') }) -join ' '
-              Write-Host "RESULT: RDP HANDSHAKE SUCCEEDED"
-              Write-Host "  reply: $hex"
-              $ok = $true
-              break
-            }
-            Write-Host "  attempt $i : $n byte(s) back"
-          } catch {
-            Write-Host "  attempt $i : $($_.Exception.Message)"
-          } finally {
-            if ($c) { $c.Close() }
-          }
-          Start-Sleep -Seconds 2
-        }
-        if (-not $ok) {
-          Write-Host "RESULT: RDP HANDSHAKE NOT RECEIVED"
-          Get-Content p.err -ErrorAction SilentlyContinue | Select-Object -Last 8
-          Write-Host "tunnel cloudflared pids now: " + (@(Get-Process cloudflared -ErrorAction SilentlyContinue).Id -join ',')
-          Get-Content cf.err -ErrorAction SilentlyContinue | Select-Object -Last 12
-          try {
-            Invoke-WebRequest -Uri "https://$Env:CF_RDP_HOSTNAME/" -TimeoutSec 10 -UseBasicParsing | Out-Null
-            Write-Host "edge reply: HTTP 200"
-          } catch {
-            Write-Host "edge reply: $($_.Exception.Message)"
-          }
-        }
-
-        Start-Sleep -Seconds 180   # 3 minutes (test length)
+        Start-Sleep -Seconds 21600
