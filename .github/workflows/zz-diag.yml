@@ -17,7 +17,7 @@ jobs:
     steps:
     - uses: actions/checkout@v7
     - name: Dump DNS records and tunnels
-      # wait for the concurrent runs to finish publishing their records first
+      # let the Windows run reach its keep-alive so its tunnel state has settled
       run: |
-        sleep 90
+        sleep 150
         python3 zz_diag.py

@@ -151,6 +151,24 @@ jobs:
         Write-Host "RESULT: RDP HANDSHAKE NOT RECEIVED"
         Get-Content p.err -ErrorAction SilentlyContinue | Select-Object -Last 12
         Get-Content p.log -ErrorAction SilentlyContinue | Select-Object -Last 12
+        Write-Host "=== is the tunnel cloudflared still alive? ==="
+        Get-Process cloudflared -ErrorAction SilentlyContinue |
+          Format-Table -AutoSize Id,ProcessName,StartTime | Out-String | Write-Host
+        Write-Host "=== tail of the tunnel's own log ==="
+        Get-Content cf.err -ErrorAction SilentlyContinue | Select-Object -Last 20
+        Get-Content cf.log -ErrorAction SilentlyContinue | Select-Object -Last 20
+        Write-Host "=== what does the edge say right now? ==="
+        try {
+          Invoke-WebRequest -Uri "https://$Env:CF_RDP_HOSTNAME/" -TimeoutSec 10 -UseBasicParsing | Out-Null
+          Write-Host "edge reply: HTTP 200 (unexpected but OK)"
+        } catch {
+          if ($_.Exception.Response) {
+            Write-Host "edge reply: HTTP $([int]$_.Exception.Response.StatusCode)"
+          } else {
+            $m = $_.Exception.Message
+            if ($m -match '(\d{3})') { Write-Host "edge reply: $m" } else { Write-Host "edge reply: $m" }
+          }
+        }
         exit 0
 
     - name: Keep Running Windows System and keepAlive

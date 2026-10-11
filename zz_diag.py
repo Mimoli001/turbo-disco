@@ -33,12 +33,19 @@ for t in tunnels:
         f"created={t.get('created_at')} deleted={t.get('deleted_at')}"
     )
 
-for t in tunnels[:4]:
+zone_hosts = ("ssh." + zone["name"], "rdp." + zone["name"],
+              "desktop." + zone["name"], "vnc." + zone["name"])
+for t in tunnels:
     st, cfg = cf.api(
         "GET", f"/accounts/{account}/cfd_tunnel/{t['id']}/configurations"
     )
     ingress = ((cfg.get("result") or {}).get("config") or {}).get("ingress")
-    print(f"[diag] ingress of {t['name']} http={st} {json.dumps(ingress)}")
+    names = [e.get("hostname", "") for e in (ingress or [])]
+    if any(n in zone_hosts for n in names):
+        print(
+            f"[diag] ingress of {t['name']} status={t.get('status')} "
+            f"http={st} {json.dumps(ingress)}"
+        )
 
 st, payload = cf.api("GET", f"/accounts/{account}/access/apps")
 print(f"[diag] Access apps http={st} {json.dumps(payload.get('result'))[:400]}")
