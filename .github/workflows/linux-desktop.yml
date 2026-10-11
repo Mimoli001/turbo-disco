@@ -24,5 +24,8 @@ jobs:
         CF_DOMAIN: ${{ secrets.CF_DOMAIN }}
         CF_DESKTOP_HOST: ${{ secrets.CF_DESKTOP_HOST }}
         CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+    # TEMP: verify the published endpoint from inside the job (reverted later)
+    - name: TEMP verify VNC through the tunnel
+      run: PATH=/tmp:$PATH WAIT_FOR_TUNNEL=5 bash e2e_test.sh desktop 25 "$CF_DESKTOP_HOSTNAME"
     - name: Keep Running Ubuntu System and keepAlive
       run: sleep 180   # 3 minutes (test length)

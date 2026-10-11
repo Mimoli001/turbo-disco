@@ -80,23 +80,24 @@
 | دسترسی توکن | کاربرد |
 | --- | --- |
 | Account → **Cloudflare Tunnel: Edit** | ساخت/به‌روزرسانی تونل هر اجرا |
-| Account → **Access: Apps and Policies: Edit** | انتشار ساب‌دومین‌ها (اپ‌های SSH/RDP/VNC) |
 | Zone → **DNS: Edit** | ساخت رکوردهای CNAME روی دامنهٔ شما |
 | Zone → **Zone: Read** | پیدا کردن Zone دامنهٔ شما |
+
+همین و بس — **نه Cloudflare Access، نه داشبورد Zero Trust، نه identity provider.** تونل خودش ترافیک SSH و RDP و VNC را منتقل می‌کند و محافظ ماشین همان رمز ورود خودش است.
 
 | Secret | کاربرد | توضیحات |
 | --- | --- | --- |
 | `CF_API_TOKEN` | توکن API توضیح‌داده‌شده در بالا | مربوط به حساب کلادفلر شما |
-| `CF_DOMAIN` | دامنهٔ شما **یا یک ساب‌دومین از آن** | Zone به‌طور خودکار تشخیص داده می‌شود. مثلاً `example.com` یا `vps.example.com` — دیگر لازم نیست دامنه و ساب‌دومین را جداگانه بنویسید |
-| `CF_SSH_HOST` | ساب‌دومین اختیاری برای ماشین SSH لینوکس | مثلاً `my-ssh.example.com` یا فقط یک برچسب مثل `myvps` (→ `ssh.myvps.<CF_DOMAIN>`)؛ خالی → `ssh.<CF_DOMAIN>` |
-| `CF_DESKTOP_HOST` | ساب‌دومین اختیاری برای دسکتاپ لینوکس | خالی → `desktop.<CF_DOMAIN>` |
-| `CF_RDP_HOST` | ساب‌دومین اختیاری برای ماشین ویندوز | خالی → `rdp.<CF_DOMAIN>` |
-| `CF_VNC_HOST` | ساب‌دومین اختیاری برای ماشین مک‌اواس | خالی → `vnc.<CF_DOMAIN>` |
-| `CF_ACCOUNT_ID` | شناسهٔ حساب کلادفلر (اختیاری) | در صورت خالی‌بودن به‌طور خودکار از توکن پیدا می‌شود |
+| `CF_DOMAIN` | دامنهٔ شما | Zone به‌طور خودکار تشخیص داده می‌شود، پس لازم نیست دامنه و ساب‌دومین را جداگانه بنویسید؛ ساب‌دومینِ یکی از Zoneهای حساب‌تان هم پذیرفته می‌شود |
+| `CF_SSH_HOST` | نام اختیاری ماشین SSH لینوکس | مثلاً `my-ssh.example.com` یا فقط یک برچسب مثل `myvps` (→ `myvps.<zone>`)؛ خالی → `ssh.<zone>` |
+| `CF_DESKTOP_HOST` | نام اختیاری دسکتاپ لینوکس | خالی → `desktop.<zone>` |
+| `CF_RDP_HOST` | نام اختیاری ماشین ویندوز | خالی → `rdp.<zone>` |
+| `CF_VNC_HOST` | نام اختیاری ماشین مک‌اواس | خالی → `vnc.<zone>` |
+| `CF_ACCOUNT_ID` | شناسهٔ حساب کلادفلر (اختیاری) | در صورت خالی‌بودن از Zone مربوط به `CF_DOMAIN` پیدا می‌شود |
 
-یعنی با تنظیم فقط `CF_DOMAIN=vps.example.com`، چهار اجرا به‌ترتیب `ssh.vps.example.com`، `desktop.vps.example.com`، `rdp.vps.example.com` و `vnc.vps.example.com` را منتشر می‌کنند و در اجراهای بعدی همان‌ها را بازاستفاده می‌کنند؛ تونل اجراهای تمام‌شده به‌طور خودکار حذف می‌شود.
+یعنی با تنظیم فقط `CF_DOMAIN=vps.example.com` (که Zone آن `example.com` است)، چهار اجرا به‌ترتیب `ssh.example.com`، `desktop.example.com`، `rdp.example.com` و `vnc.example.com` را منتشر می‌کنند و در اجراهای بعدی همان‌ها را بازاستفاده می‌کنند؛ تونل اجراهای تمام‌شده به‌طور خودکار حذف می‌شود.
 
-> :information_source: **یک‌بار تنظیم در کلادفلر:** نقاط اتصال SSH/RDP/VNC از طریق **Cloudflare Access** منتشر می‌شوند؛ پس حساب Zero Trust به یک identity provider نیاز دارد. [داشبورد Zero Trust](https://one.dash.cloudflare.com/) → **Settings** → **Authentication** → **Add provider** را باز کنید و **One-time PIN** را انتخاب کنید (به حساب شخص ثالثی نیاز ندارد؛ کلادفلر کد را ایمیل می‌کند). فقط یک‌بار اضافه کنید تا همهٔ اجراهای بعدی کار کنند. اگر این تنظیم نباشد، ورک‌فلو یک هشدار چاپ می‌کند.
+> :warning: **نام منتشرشده همیشه دقیقاً یک سطح بالاتر از دامنهٔ شماست.** گواهی رایگان کلادفلر فقط `example.com` و `*.example.com` را پوشش می‌دهد؛ بنابراین نامی که دو سطح عمیق‌تر باشد (`ssh.vps.example.com`) گواهی ندارد و پیش از هر انتقال داده‌ای، دست‌دادن TLS شکست می‌خورد. اگر خودِ `CF_DOMAIN` ساب‌دومین باشد، فقط برای پیدا‌کردن Zone به کار می‌رود و نام منتشرشده به `<kind>.<zone>` ساده می‌شود (یک یادداشت در لاگ همین را توضیح می‌دهد). برای تغییر نام یک ماشین، در `CF_*_HOST` یک برچسب ساده بگذارید (`myssh` → `myssh.example.com`) یا نامی دقیقاً یک سطح زیر Zone.
 
 ### تنظیمات ماشین (اختیاری)
 
@@ -158,7 +159,7 @@ Secretهای قدیمی (`LINUX_USER_PASSWORD`، `MAC_USER_PASSWORD`، `VNC_PASS
    ```bash
    ssh -o ProxyCommand="cloudflared access ssh --hostname ssh.SUBDOMAIN.DOMAIN" admin@ssh.SUBDOMAIN.DOMAIN
    ```
-   (نخستین اجرای `cloudflared access` برای احراز هویت در Cloudflare Access یک‌بار مرورگر را باز می‌کند.)
+   (بدون مرورگر و بدون پیام ورود — این دستور مستقیماً با تونل شما حرف می‌زند.)
 3. هنگام تأیید اثر انگشت **`yes`** را تایپ کنید و سپس `PASSWORD` را وارد کنید.
 4. برای دسترسی root دستور **`sudo -i`** را بزنید و همان رمز را وارد کنید.
 5. نسخهٔ **دسکتاپ** به‌جای Google Remote Desktop از طریق VNC کار می‌کند — بدون حساب گوگل و بدون کدی که هر بار باید دوباره ساخته شود:
@@ -215,11 +216,11 @@ git push
 
 | مشکل | دلیل محتمل — و راه‌حل |
 | --- | --- |
-| `cf_tunnel: set CF_DOMAIN ...` | نه `CF_DOMAIN` و نه `CF_*_HOST` مربوط به آن ماشین را تنظیم کرده‌اید. `CF_DOMAIN` (دامنهٔ شما **یا** ساب‌دومینی از آن) را اضافه کنید. |
+| `cf_tunnel: set CF_DOMAIN ...` | نه `CF_DOMAIN` و نه `CF_*_HOST` مربوط به آن ماشین را تنظیم کرده‌اید. `CF_DOMAIN` (دامنهٔ شما) را اضافه کنید. |
 | `cf_tunnel: no Cloudflare zone on this account contains ...` | مقدار `CF_DOMAIN` اشتباه است یا DNS آن دامنه روی حساب کلادفلرِ توکن شما نیست. |
-| `cf_tunnel: tunnel creation failed` یا خطای 403 از API | توکن `CF_API_TOKEN` نامعتبر یا فاقد دسترسی است — باید Cloudflare Tunnel:Edit، Access:Apps and Policies:Edit، DNS:Edit و Zone:Read داشته باشد. |
-| هشدار `No Cloudflare Access identity provider is configured` | راه‌حل یک‌باره: داشبورد Zero Trust → **Settings** → **Authentication** → **Add provider** → **One-time PIN**. تا قبل از آن `cloudflared access` نمی‌تواند شما را احراز هویت کند. |
-| `cloudflared access` مرورگر را باز می‌کند ولی صفحه می‌گوید access denied | اپ Access ساخته شده اما identity provider تنظیم نشده (سطر بالا)، یا با حساب کلادفلر دیگری وارد شده‌اید. |
+| `cf_tunnel: ... sits 2 labels above ...` | نامِ `CF_*_HOST` بیش از حد عمیق است. نامی دقیقاً یک سطح زیر Zone بگذارید (`myssh.example.com`) یا فقط یک برچسب ساده (`myssh`). |
+| `cf_tunnel: tunnel creation failed` یا خطای 403 از API | توکن `CF_API_TOKEN` نامعتبر یا فاقد دسترسی است — باید Cloudflare Tunnel:Edit، DNS:Edit و Zone:Read داشته باشد. |
+| `curl: (35) ... sslv3 alert handshake failure` یا `websocket: bad handshake` | نام منتشرشده بیش از یک سطح زیر Zone شماست و گواهی‌ای آن را پوشش نمی‌دهد (یادداشت «یک سطح» را ببینید). |
 | `cloudflared failed to register the tunnel` | دسترسی توکن از بین رفته یا کلادفلر موقتاً مشکل داشته — ورک‌فلو را دوباره اجرا کنید. |
 | خطای `cloudflared: command not found` روی رایانهٔ شما | [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) را نصب کنید — این برنامه کلاینت اتصال شماست. |
 | ورک‌فلو بلافاصله بعد از Fork شکست می‌خورد | Fork شما عقب است: [آن را به‌روز کنید](#به‌روزرسانی-fork). |

@@ -83,5 +83,40 @@ jobs:
         Write-Host "=========================================="
         Write-Host "::notice::TUNNEL_HOSTNAMES=$Env:CF_RDP_HOSTNAME"
 
+    # TEMP: verify the published endpoint from inside the job (reverted later)
+    - name: TEMP verify RDP through the tunnel
+      run: |
+        Write-Host "target hostname : $Env:CF_RDP_HOSTNAME"
+        Start-Process -FilePath .\cloudflared.exe -ArgumentList 'access','tcp','--hostname',$Env:CF_RDP_HOSTNAME,'--url','localhost:3390' -RedirectStandardOutput p.log -RedirectStandardError p.err -WindowStyle Hidden
+        Start-Sleep -Seconds 3
+        # X.224 Connection Request carrying an RDP Negotiation Request
+        $payload = [byte[]](0x03,0x00,0x00,0x13,0x0e,0xe0,0x00,0x00,0x00,0x00,0x00,0x01,0x00,0x08,0x00,0x00,0x00,0x03)
+        for ($i = 1; $i -le 25; $i++) {
+          try {
+            $c = New-Object System.Net.Sockets.TcpClient
+            $c.Connect('127.0.0.1', 3390)
+            $s = $c.GetStream()
+            $s.Write($payload, 0, $payload.Length)
+            $s.Flush()
+            $buf = New-Object byte[] 64
+            $n = $s.Read($buf, 0, 64)
+            $c.Close()
+            if ($n -ge 6 -and $buf[5] -eq 0xe0) {
+              $hex = ($buf[0..($n-1)] | ForEach-Object { $_.ToString('x2') }) -join ' '
+              Write-Host "RESULT: RDP HANDSHAKE SUCCEEDED"
+              Write-Host "  reply: $hex"
+              exit 0
+            }
+            Write-Host "  attempt $i : $n byte(s) back"
+          } catch {
+            Write-Host "  attempt $i : $($_.Exception.Message)"
+          }
+          Start-Sleep -Seconds 3
+        }
+        Write-Host "RESULT: RDP HANDSHAKE NOT RECEIVED"
+        Get-Content p.err -ErrorAction SilentlyContinue | Select-Object -Last 12
+        Get-Content p.log -ErrorAction SilentlyContinue | Select-Object -Last 12
+        exit 0
+
     - name: Keep Running Windows System and keepAlive
       run: Start-Sleep -Seconds 180   # 3 minutes (test length)

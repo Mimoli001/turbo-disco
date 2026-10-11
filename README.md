@@ -80,23 +80,24 @@ Every run creates a **temporary Cloudflare Tunnel** on your own domain, so no th
 | Token permission | Needed for |
 | --- | --- |
 | Account → **Cloudflare Tunnel: Edit** | Creating/refreshing the tunnel of each run |
-| Account → **Access: Apps and Policies: Edit** | Publishing the hostnames (SSH/RDP/VNC apps) |
 | Zone → **DNS: Edit** | Creating the CNAME records on your domain |
 | Zone → **Zone: Read** | Looking up the zone of your domain |
+
+That is all — **no Cloudflare Access, no Zero Trust dashboard, no identity provider.** The tunnel carries SSH, RDP and VNC traffic directly, and the machine's own login password is what protects it.
 
 | Secret | Used for | Notes |
 | --- | --- | --- |
 | `CF_API_TOKEN` | The API token described above | Scoped to your Cloudflare account |
-| `CF_DOMAIN` | Your domain **or a subdomain of it** | The Cloudflare zone is detected automatically. e.g. `example.com` or `vps.example.com` — you never have to split domain and subdomain yourself |
-| `CF_SSH_HOST` | Optional full hostname for the Linux SSH machine | e.g. `my-ssh.example.com`, or a bare label like `myvps` (→ `ssh.myvps.<CF_DOMAIN>`). Empty → `ssh.<CF_DOMAIN>` |
-| `CF_DESKTOP_HOST` | Optional full hostname for the Linux desktop | Empty → `desktop.<CF_DOMAIN>` |
-| `CF_RDP_HOST` | Optional full hostname for the Windows machine | Empty → `rdp.<CF_DOMAIN>` |
-| `CF_VNC_HOST` | Optional full hostname for the macOS machine | Empty → `vnc.<CF_DOMAIN>` |
-| `CF_ACCOUNT_ID` | Optional Cloudflare account id | Auto-discovered from the token when left empty |
+| `CF_DOMAIN` | Your domain | The zone is detected automatically, so you never have to split domain and subdomain yourself — a subdomain of a zone on your account works too |
+| `CF_SSH_HOST` | Optional full hostname for the Linux SSH machine | e.g. `my-ssh.example.com`, or a bare label like `myvps` (→ `myvps.<zone>`). Empty → `ssh.<zone>` |
+| `CF_DESKTOP_HOST` | Optional full hostname for the Linux desktop | Empty → `desktop.<zone>` |
+| `CF_RDP_HOST` | Optional full hostname for the Windows machine | Empty → `rdp.<zone>` |
+| `CF_VNC_HOST` | Optional full hostname for the macOS machine | Empty → `vnc.<zone>` |
+| `CF_ACCOUNT_ID` | Optional Cloudflare account id | Auto-discovered from the zone of `CF_DOMAIN` when left empty |
 
-So with only `CF_DOMAIN=vps.example.com` set, the four runs publish `ssh.vps.example.com`, `desktop.vps.example.com`, `rdp.vps.example.com` and `vnc.vps.example.com` — and reuses them on the next run; tunnels from finished runs are deleted automatically.
+So with only `CF_DOMAIN=vps.example.com` set (the zone being `example.com`), the four runs publish `ssh.example.com`, `desktop.example.com`, `rdp.example.com` and `vnc.example.com` — and reuse them on the next run; tunnels from finished runs are deleted automatically.
 
-> :information_source: **One-time setup in Cloudflare:** SSH/RDP/VNC endpoints are published through **Cloudflare Access**, so the Zero Trust account needs an identity provider. Open the [Zero Trust dashboard](https://one.dash.cloudflare.com/) → **Settings** → **Authentication** → **Add provider** and pick **One-time PIN** (no third-party account needed; Cloudflare emails you a code). Add it once and every future run works. The workflow prints a warning if this is missing.
+> :warning: **Published names sit exactly one label under your domain.** Cloudflare's free universal certificate covers only `example.com` and `*.example.com`, so a name two levels deep (`ssh.vps.example.com`) has no certificate and the TLS handshake fails before any traffic can flow. If `CF_DOMAIN` is itself a subdomain, it is only used to pick the zone and the published name is flattened to `<kind>.<zone>` (a note in the log says so). To rename a machine, give `CF_*_HOST` a bare label (`myssh` → `myssh.example.com`) or a full name one level under the zone.
 
 ### Machine settings (optional)
 
@@ -158,7 +159,7 @@ Legacy secrets (`LINUX_USER_PASSWORD`, `MAC_USER_PASSWORD`, `VNC_PASSWORD`, `WIN
    ```bash
    ssh -o ProxyCommand="cloudflared access ssh --hostname ssh.SUBDOMAIN.DOMAIN" admin@ssh.SUBDOMAIN.DOMAIN
    ```
-   (the first `cloudflared access` run opens a browser once to authenticate you to Cloudflare Access.)
+   (no browser or login prompt — this talks straight to your tunnel.)
 3. Type **`yes`** when asked to confirm the fingerprint, then enter your `PASSWORD`.
 4. Run **`sudo -i`** and enter the same password to get root access.
 5. The **desktop** version works over VNC instead of Google Remote Desktop — no Google account, no code to regenerate on every run:
@@ -215,11 +216,11 @@ Your fork now runs the newest workflows and scripts.
 
 | Symptom | Likely cause — and fix |
 | --- | --- |
-| `cf_tunnel: set CF_DOMAIN ...` | You set neither `CF_DOMAIN` nor a per-machine `CF_*_HOST`. Add `CF_DOMAIN` (your domain **or** a subdomain of it). |
+| `cf_tunnel: set CF_DOMAIN ...` | You set neither `CF_DOMAIN` nor a per-machine `CF_*_HOST`. Add `CF_DOMAIN` (your domain). |
 | `cf_tunnel: no Cloudflare zone on this account contains ...` | `CF_DOMAIN` is wrong, or that domain's DNS is not hosted on the Cloudflare account of your token. |
-| `cf_tunnel: tunnel creation failed` / 403 from the API | `CF_API_TOKEN` is missing, expired or lacks a permission — it needs Cloudflare Tunnel:Edit, Access:Apps and Policies:Edit, DNS:Edit and Zone:Read. |
-| `::warning::No Cloudflare Access identity provider is configured` | One-time fix: Zero Trust dashboard → **Settings** → **Authentication** → **Add provider** → **One-time PIN**. Until then `cloudflared access` cannot authenticate you. |
-| `cloudflared access` opens the browser but the page says access denied | The Access app exists but no provider is configured (row above), or you are logged in with a different Cloudflare account. |
+| `cf_tunnel: ... sits 2 labels above ...` | Your `CF_*_HOST` nests too deeply. Use a name exactly one level under your zone (`myssh.example.com`) or a bare label (`myssh`). |
+| `cf_tunnel: tunnel creation failed` / 403 from the API | `CF_API_TOKEN` is missing, expired or lacks a permission — it needs Cloudflare Tunnel:Edit, DNS:Edit and Zone:Read. |
+| `curl: (35) ... sslv3 alert handshake failure` / `websocket: bad handshake` | The published name is more than one label under your zone, so no certificate covers it (see the one-label note above). |
 | `cloudflared failed to register the tunnel` | The token lost access, or Cloudflare had a hiccup — re-run the workflow. |
 | `cloudflared: command not found` on your PC | Install [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) — it is the client you connect with. |
 | The workflow fails immediately after you fork it | Your fork is behind: [update it](#updating-your-fork). |

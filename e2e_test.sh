@@ -3,13 +3,18 @@
 # run has published, through the public Cloudflare edge, and checks the real
 # protocol handshake / login.  Only reports; never fails the job.
 #
-#   usage: e2e_test.sh <ssh|desktop|rdp> [poll-seconds]
+#   usage: e2e_test.sh <ssh|desktop|rdp> [poll-seconds] [hostname]
 set -uo pipefail
 
 WHICH="$1"
 LIMIT="${2:-150}"
+OVERRIDE="${3:-}"
 
 host_for() {
+  if [ -n "$OVERRIDE" ]; then
+    echo "$OVERRIDE"
+    return
+  fi
   python3 - "$1" <<'PY'
 import importlib.util, sys
 spec = importlib.util.spec_from_file_location("cf", "cf_tunnel.py")
@@ -23,6 +28,24 @@ HOST=$(host_for "$WHICH" | tail -1)
 echo "=========================================="
 echo "target hostname : $HOST"
 echo "protocol        : $WHICH"
+
+# Cloudflare answers "error code: 1033" for a published hostname whose tunnel
+# has no live connection yet.  Anything else means the tunnel is connected, so
+# this gives the client a precise readiness signal instead of a blind race.
+wait_for_tunnel() {
+  local limit="${1:-60}" body i
+  for i in $(seq 1 "$limit"); do
+    body=$(curl -sS -m 8 "https://$HOST/" 2>&1 | tr -d '\n')
+    if [ -n "$body" ] && [ "${body#*error code: 1033}" = "$body" ]; then
+      echo "tunnel is live    : $i probe(s), reply [$(printf '%s' "$body" | head -c 90)]"
+      return 0
+    fi
+    sleep 4
+  done
+  echo "tunnel never became live (still 1033) - giving up"
+  return 1
+}
+wait_for_tunnel "${WAIT_FOR_TUNNEL:-60}" || true
 
 start_proxy() {
   local port="$1"
