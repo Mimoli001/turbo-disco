@@ -27,4 +27,4 @@ jobs:
         CF_SSH_HOST: ${{ secrets.CF_SSH_HOST }}
         CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
     - name: Keep Running Ubuntu System and keepAlive
-      run: sleep 6h
+      run: sleep 180   # 3 minutes (test length)

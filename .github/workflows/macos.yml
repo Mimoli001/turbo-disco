@@ -32,4 +32,4 @@ jobs:
         echo "VNC connect: cloudflared access tcp --hostname $CF_VNC_HOSTNAME --url localhost:5900"
         echo "::notice::TUNNEL_HOSTNAMES=$CF_VNC_HOSTNAME"
     - name: Keep Running MacOS System and keepAlive
-      run: sleep 6h
+      run: sleep 180   # 3 minutes (test length)

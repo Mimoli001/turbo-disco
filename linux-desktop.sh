@@ -65,7 +65,9 @@ EOF
 sudo install -o "$LINUX_USERNAME" -g "$LINUX_USERNAME" -m 755 /tmp/xstartup "$VNC_DIR/xstartup"
 
 echo "### Start VNC on display :1 (port 5901) ###"
-echo -e "no\n$VNC_PASSWORD\n$VNC_PASSWORD" | sudo -H -u "$LINUX_USERNAME" tightvncserver :1
+# vncpasswd asks for: password, verify, then whether a view-only password is
+# wanted - so the answers must go in that order.
+echo -e "$VNC_PASSWORD\n$VNC_PASSWORD\nno" | sudo -H -u "$LINUX_USERNAME" tightvncserver :1
 
 echo "### Create the Cloudflare tunnel for the desktop (port 5901) ###"
 python3 cf_tunnel.py setup desktop

@@ -19,6 +19,7 @@ Environment:
                   label ("myvps" -> ssh.myvps.<CF_DOMAIN>).
   CF_ACCOUNT_ID   optional; auto-discovered from the token when empty
 """
+import datetime
 import json
 import os
 import sys
@@ -145,15 +146,36 @@ def resolve_hostname(name):
     return f"{name}.{base}"
 
 
+# A GitHub-hosted job is killed after 6 hours, so any tunnel older than that
+# definitely belongs to a finished run. Younger ones may belong to a workflow
+# that is still running - deleting those would break a concurrent run, and the
+# whole point is that all four systems can run at the same time.
+PRUNE_AFTER = datetime.timedelta(hours=7)
+
+
+def parse_time(value):
+    if not value:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 def prune_old_tunnels(account, current):
+    now = datetime.datetime.now(datetime.timezone.utc)
     _, payload = api(
         "GET", f"/accounts/{account}/cfd_tunnel?is_deleted=false&per_page=100"
     )
     for tunnel in items(payload):
         name = tunnel.get("name", "")
-        if name.startswith(TUNNEL_PREFIX) and name != current:
-            api("DELETE", f"/accounts/{account}/cfd_tunnel/{tunnel['id']}")
-            print(f"cf_tunnel: removed stale tunnel {name}")
+        if not name.startswith(TUNNEL_PREFIX) or name == current:
+            continue
+        created = parse_time(tunnel.get("created_at"))
+        if created is None or now - created <= PRUNE_AFTER:
+            continue
+        api("DELETE", f"/accounts/{account}/cfd_tunnel/{tunnel['id']}")
+        print(f"cf_tunnel: removed stale tunnel {name}")
 
 
 def create_tunnel(account, name):
