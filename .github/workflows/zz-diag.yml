@@ -1,0 +1,23 @@
+name: CF diagnostic (temporary)
+on:
+  push:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      CF_DOMAIN: ${{ secrets.CF_DOMAIN }}
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+    steps:
+    - uses: actions/checkout@v7
+    - name: Dump DNS records and tunnels
+      # wait for the concurrent runs to finish publishing their records first
+      run: |
+        sleep 90
+        python3 zz_diag.py
