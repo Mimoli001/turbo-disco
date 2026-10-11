@@ -28,7 +28,7 @@ jobs:
         " | tail -1)
         echo "target hostname: $HOST"
         for i in $(seq 1 60); do
-          body=$(curl -sS -m 10 "https://$HOST/vnc.html" 2>&1)
+          body=$(curl -sS -m 10 "https://$HOST/vnc.html" 2>&1 || true)
           if printf '%s' "$body" | grep -q "noVNC"; then
             echo "RESULT: WEB DESKTOP REACHED from another runner (noVNC page served)"
             exit 0

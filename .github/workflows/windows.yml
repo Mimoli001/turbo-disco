@@ -51,12 +51,24 @@ jobs:
         Invoke-WebRequest https://www.tightvnc.com/download/2.8.90/tightvnc-2.8.90-gpl-setup-64bit.msi -OutFile tvnc.msi
         $msi = Start-Process msiexec -ArgumentList '/i','tvnc.msi','/quiet','/norestart',
           'ADDLOCAL=Server','SERVER_REGISTER_AS_SYSTEM=1',
-          'SERVER_ADD_FIREWALL_EXCEPTION=1',
+          'SERVER_ADD_FIREWALL_EXCEPTION=1','SERVER_ALLOW_LOOPBACK=1',
           'SET_PASSWORD=1',"VALUE_OF_PASSWORD=$vncPw" -Wait -PassThru
         if ($msi.ExitCode -ne 0) {
           Write-Host "::warning::TightVNC installer exited with $($msi.ExitCode) - browser desktop may be unavailable."
         }
-        try { Start-Service tvnserver -ErrorAction Stop } catch { Write-Host "start tvnserver: $($_.Exception.Message)" }
+        # The tunnel and the noVNC bridge both reach VNC over loopback, which
+        # TightVNC blocks by default - enforce it in the registry too, then
+        # (re)start the service so the setting takes effect.
+        try {
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\TightVNC\Server' -Name 'AllowLoopback' -Value 1 -Type DWord -ErrorAction Stop
+        } catch {
+          try {
+            New-Item -Path 'HKLM:\SOFTWARE\TightVNC\Server' -Force | Out-Null
+            New-ItemProperty -Path 'HKLM:\SOFTWARE\TightVNC\Server' -Name 'AllowLoopback' -Value 1 -PropertyType DWord -Force | Out-Null
+          } catch { Write-Host "AllowLoopback registry: $($_.Exception.Message)" }
+        }
+        try { Restart-Service tvnserver -ErrorAction Stop } catch { try { Start-Service tvnserver -ErrorAction Stop } catch { Write-Host "start tvnserver: $($_.Exception.Message)" } }
+        Start-Sleep -Seconds 3
 
     - name: Create Cloudflare tunnel for RDP (3389) and browser desktop
       run: python cf_tunnel.py setup rdp web
@@ -80,11 +92,13 @@ jobs:
 
         # noVNC bridge: browser (https via the tunnel) -> websockify -> VNC.
         # Must start here, not in an earlier step (see the note above).
+        # NOTE: utils/novnc_proxy is a bash script, so on Windows run the
+        # websockify module directly with --web pointing at the noVNC files.
         python -m pip install --quiet --disable-pip-version-check websockify
         Invoke-WebRequest https://github.com/novnc/noVNC/archive/refs/tags/v1.7.0.tar.gz -OutFile novnc.tgz
         tar -xzf novnc.tgz
         Remove-Item novnc.log, novnc.err -ErrorAction SilentlyContinue
-        Start-Process -FilePath python -ArgumentList 'noVNC-1.7.0/utils/novnc_proxy','--listen','6080','--vnc','localhost:5900' -RedirectStandardOutput novnc.log -RedirectStandardError novnc.err -WindowStyle Hidden
+        Start-Process -FilePath python -ArgumentList '-m','websockify','--web','noVNC-1.7.0','6080','localhost:5900' -RedirectStandardOutput novnc.log -RedirectStandardError novnc.err -WindowStyle Hidden
 
         $ready = $null
         foreach ($i in 1..60) {
@@ -112,6 +126,10 @@ jobs:
           Write-Host "local noVNC page: HTTP $($page.StatusCode), has client: $($page.Content -match 'noVNC')"
         } catch {
           Write-Host "local noVNC page FAILED: $($_.Exception.Message)"
+          Write-Host "--- novnc.err ---"
+          Get-Content novnc.err -ErrorAction SilentlyContinue | Select-Object -Last 15
+          Write-Host "--- novnc.log ---"
+          Get-Content novnc.log -ErrorAction SilentlyContinue | Select-Object -Last 8
         }
         try {
           $t = New-Object System.Net.Sockets.TcpClient
