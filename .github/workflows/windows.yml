@@ -87,6 +87,41 @@ jobs:
     - name: TEMP verify RDP through the tunnel
       run: |
         Write-Host "target hostname : $Env:CF_RDP_HOSTNAME"
+        # Is RDP actually reachable on the address the tunnel points at?
+        Write-Host "=== services ==="
+        Get-Service TermService, UmRdsService -ErrorAction SilentlyContinue |
+          Format-Table -AutoSize Name,Status,StartType | Out-String | Write-Host
+        Write-Host "=== listeners on 3389 ==="
+        $lines = @(netstat -ano | Select-String 'LISTENING' | Where-Object { $_.Line -match ':3389\s' })
+        foreach ($l in $lines) { Write-Host $l.Line.Trim() }
+        if (-not ($lines | Where-Object { $_.Line -match '127\.0\.0\.1:3389|0\.0\.0\.0:3389|\[::\]:3389' })) {
+          Write-Host "127.0.0.1:3389 is not listening"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0
+          try { Start-Service TermService -ErrorAction Stop } catch { Write-Host "start TermService: $($_.Exception.Message)" }
+          Start-Sleep -Seconds 6
+          $lines = @(netstat -ano | Select-String 'LISTENING' | Where-Object { $_.Line -match ':3389\s' })
+          foreach ($l in $lines) { Write-Host "after restart: " + $l.Line.Trim() }
+          $any = $lines | Select-Object -First 1
+          if ($any) {
+            $ip = ($any.Line.Trim() -split '\s+')[1] -replace ':3389$', ''
+            if ($ip -eq '127.0.0.1' -or $ip -eq '0.0.0.0' -or $ip -eq '[::]' -or $ip -eq '::') {
+              Write-Host "listener found on $ip"
+            } else {
+              Write-Host "RDP listens only on $ip - forwarding 127.0.0.1 -> $ip"
+              netsh interface portproxy add v4tov4 listenaddress=127.0.0.1 listenport=3389 connectaddress=$ip connectport=3389 | Out-Host
+            }
+          } else {
+            Write-Host "no RDP listener at all after restart"
+          }
+        }
+        try {
+          $probe = New-Object System.Net.Sockets.TcpClient
+          $probe.Connect('127.0.0.1', 3389)
+          Write-Host "local 127.0.0.1:3389 connect: OK"
+          $probe.Close()
+        } catch {
+          Write-Host "local 127.0.0.1:3389 connect: FAILED - $($_.Exception.Message)"
+        }
         Start-Process -FilePath .\cloudflared.exe -ArgumentList 'access','tcp','--hostname',$Env:CF_RDP_HOSTNAME,'--url','localhost:3390' -RedirectStandardOutput p.log -RedirectStandardError p.err -WindowStyle Hidden
         Start-Sleep -Seconds 3
         # X.224 Connection Request carrying an RDP Negotiation Request
