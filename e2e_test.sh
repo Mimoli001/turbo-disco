@@ -86,14 +86,16 @@ case "$WHICH" in
 import socket, sys, time
 limit = int(sys.argv[1])
 # X.224 Connection Request carrying an RDP Negotiation Request
-payload = bytes.fromhex("030000130ee0000000000001000800000003")
+# (19 bytes: TPKT len 0x13, LI 0x0e, CR 0xe0, RDP-neg len 8, protocols 3 LE)
+payload = bytes.fromhex("030000130ee000000000000100080003000000")
 for i in range(limit):
     try:
         s = socket.create_connection(("127.0.0.1", 3390), timeout=8)
         s.sendall(payload)
         data = s.recv(64)
         s.close()
-        if len(data) >= 6 and data[5] == 0xe0:
+        # a Connection Confirm carries TPDU code 0xd0 at index 5
+        if len(data) >= 6 and data[5] == 0xd0:
             print("RESULT: RDP HANDSHAKE SUCCEEDED (X.224 Connection Confirm)")
             print("  reply: %s" % data.hex())
             sys.exit(0)
