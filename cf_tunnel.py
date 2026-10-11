@@ -170,11 +170,14 @@ def resolve_route(name):
     else:
         host = f"{name}.{zone_name}"
         if base.lower() != zone_name.lower():
+            # stderr, not stdout: callers capture the resolved hostname from
+            # stdout and this note must not become part of it
             print(
                 f"cf_tunnel: note: CF_DOMAIN={base} is a subdomain of "
                 f"{zone_name}; using {host} because a published name must sit "
                 f"directly under the zone (its certificate only covers "
-                f"{zone_name} and *.{zone_name})"
+                f"{zone_name} and *.{zone_name})",
+                file=sys.stderr,
             )
 
     depth = len(host.split(".")) - len(zone_name.split("."))

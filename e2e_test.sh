@@ -19,7 +19,7 @@ print(cf.resolve_route(sys.argv[1])[0])
 PY
 }
 
-HOST=$(host_for "$WHICH")
+HOST=$(host_for "$WHICH" | tail -1)
 echo "=========================================="
 echo "target hostname : $HOST"
 echo "protocol        : $WHICH"
