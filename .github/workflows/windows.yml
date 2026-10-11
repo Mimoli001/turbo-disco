@@ -1,5 +1,6 @@
 name: Windows Virtual Machine
 on:
+  push:   # TEMP: trigger for live testing (revert to dispatch-only later)
   workflow_dispatch:
 
 defaults:
@@ -40,23 +41,50 @@ jobs:
         PASSWORD: ${{ secrets.PASSWORD }}
         WINDOWS_USER_PASSWORD: ${{ secrets.WINDOWS_USER_PASSWORD }}
 
-    - name: Create Cloudflare tunnel for RDP (3389)
-      run: python cf_tunnel.py setup rdp
+    - name: Install TightVNC server (for the browser desktop)
+      run: |
+        $pw = $Env:RDP_PASSWORD
+        # Classic VNC auth accepts at most 8 characters - same convention as
+        # the Linux desktop (first 8 of the machine password).
+        $vncPw = $pw.Substring(0, [Math]::Min(8, $pw.Length))
+        echo "VNC_PASSWORD=$vncPw" | Out-File -FilePath $env:GITHUB_ENV -Append
+        Invoke-WebRequest https://www.tightvnc.com/download/2.8.90/tightvnc-2.8.90-gpl-setup-64bit.msi -OutFile tvnc.msi
+        $msi = Start-Process msiexec -ArgumentList '/i','tvnc.msi','/quiet','/norestart',
+          'ADDLOCAL=Server','SERVER_REGISTER_AS_SYSTEM=1',
+          'SERVER_ADD_FIREWALL_EXCEPTION=1',
+          'SET_PASSWORD=1',"VALUE_OF_PASSWORD=$vncPw" -Wait -PassThru
+        if ($msi.ExitCode -ne 0) {
+          Write-Host "::warning::TightVNC installer exited with $($msi.ExitCode) - browser desktop may be unavailable."
+        }
+        try { Start-Service tvnserver -ErrorAction Stop } catch { Write-Host "start tvnserver: $($_.Exception.Message)" }
+
+    - name: Create Cloudflare tunnel for RDP (3389) and browser desktop
+      run: python cf_tunnel.py setup rdp web
       env:
         CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
         CF_DOMAIN: ${{ secrets.CF_DOMAIN }}
         CF_RDP_HOST: ${{ secrets.CF_RDP_HOST }}
+        CF_WEB_HOST: ${{ secrets.CF_WEB_HOST }}
         CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
 
 
-    # Starting the tunnel, printing the connection info and keeping the machine
-    # alive happen inside ONE step on purpose: a cloudflared process launched
-    # by Start-Process in its own step is already gone by the time the next
-    # step runs, so the tunnel would die seconds after "Tunnel is up".
+    # Starting the tunnel, the browser bridge, printing the connection info
+    # and keeping the machine alive happen inside ONE step on purpose:
+    # a process launched by Start-Process in its own step is already gone by
+    # the time the next step runs, so the tunnel would die seconds after
+    # "Tunnel is up".
     - name: Start the tunnel and keep Windows alive
       run: |
         Remove-Item cf.log, cf.err -ErrorAction SilentlyContinue
         Start-Process -FilePath .\cloudflared.exe -ArgumentList 'tunnel','run','--token',$Env:CF_TUNNEL_TOKEN -RedirectStandardOutput cf.log -RedirectStandardError cf.err -WindowStyle Hidden
+
+        # noVNC bridge: browser (https via the tunnel) -> websockify -> VNC.
+        # Must start here, not in an earlier step (see the note above).
+        python -m pip install --quiet --disable-pip-version-check websockify
+        Invoke-WebRequest https://github.com/novnc/noVNC/archive/refs/tags/v1.7.0.tar.gz -OutFile novnc.tgz
+        tar -xzf novnc.tgz
+        Remove-Item novnc.log, novnc.err -ErrorAction SilentlyContinue
+        Start-Process -FilePath python -ArgumentList 'noVNC-1.7.0/utils/novnc_proxy','--listen','6080','--vnc','localhost:5900' -RedirectStandardOutput novnc.log -RedirectStandardError novnc.err -WindowStyle Hidden
 
         $ready = $null
         foreach ($i in 1..60) {
@@ -75,14 +103,53 @@ jobs:
           Get-Content cf.log -ErrorAction SilentlyContinue | Select-Object -Last 40
           exit 1
         }
+
+        # Local checks: VNC server up, noVNC bridge serving, VNC auth offered.
+        $vncUp = @(netstat -ano | Select-String 'LISTENING' | Where-Object { $_.Line -match ':5900\s' }).Count -gt 0
+        Write-Host "local 5900 (VNC) listening: $vncUp"
+        try {
+          $page = Invoke-WebRequest -Uri 'http://127.0.0.1:6080/vnc.html' -TimeoutSec 15 -UseBasicParsing
+          Write-Host "local noVNC page: HTTP $($page.StatusCode), has client: $($page.Content -match 'noVNC')"
+        } catch {
+          Write-Host "local noVNC page FAILED: $($_.Exception.Message)"
+        }
+        try {
+          $t = New-Object System.Net.Sockets.TcpClient
+          $t.ReceiveTimeout = 5000
+          $t.Connect('127.0.0.1', 5900)
+          $s = $t.GetStream()
+          $banner = New-Object byte[] 12
+          $n = $s.Read($banner, 0, 12)
+          $s.Write($banner, 0, $n)
+          $s.Flush()
+          $sec = New-Object byte[] 16
+          $m = $s.Read($sec, 0, 16)
+          $t.Close()
+          $types = ($sec[1..($m-1)] | ForEach-Object { $_.ToString() }) -join ','
+          Write-Host "VNC banner: $([Text.Encoding]::ASCII.GetString($banner).Trim()) / auth types: [$types] (2=VNC password)"
+        } catch {
+          Write-Host "VNC auth probe FAILED: $($_.Exception.Message)"
+        }
+
         Write-Host "=========================================="
-        Write-Host "Tunnel is up: $Env:CF_RDP_HOSTNAME"
-        Write-Host "Connect from your PC with cloudflared installed:"
+        Write-Host "Tunnel is up: $Env:CF_RDP_HOSTNAME and $Env:CF_WEB_HOSTNAME"
+        Write-Host "Native Remote Desktop (cloudflared on your PC):"
         Write-Host "  cloudflared access tcp --hostname $Env:CF_RDP_HOSTNAME --url localhost:3389"
         Write-Host "  then: mstsc /v:localhost:3389"
         Write-Host "Username: $Env:RDP_USER"
         Write-Host "Password: $Env:RDP_PASSWORD"
+        Write-Host "Browser desktop (any device, nothing to install):"
+        Write-Host "  open https://$Env:CF_WEB_HOSTNAME/vnc.html"
+        Write-Host "  VNC password: $Env:VNC_PASSWORD"
         Write-Host "=========================================="
-        Write-Host "::notice::TUNNEL_HOSTNAMES=$Env:CF_RDP_HOSTNAME"
+        Write-Host "::notice::TUNNEL_HOSTNAMES=$Env:CF_RDP_HOSTNAME,$Env:CF_WEB_HOSTNAME"
 
-        Start-Sleep -Seconds 21600
+        # TEMP: verify the public browser path through the edge (revert later)
+        try {
+          $edge = Invoke-WebRequest -Uri "https://$Env:CF_WEB_HOSTNAME/vnc.html" -TimeoutSec 20 -UseBasicParsing
+          Write-Host "TEMP edge check: HTTP $($edge.StatusCode), has client: $($edge.Content -match 'noVNC')"
+        } catch {
+          Write-Host "TEMP edge check FAILED: $($_.Exception.Message)"
+        }
+
+        Start-Sleep -Seconds 180   # TEMP: 3 minutes for testing (restore 21600 later)

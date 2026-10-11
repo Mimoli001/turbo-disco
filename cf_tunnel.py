@@ -3,13 +3,14 @@
 cf_tunnel.py - ephemeral Cloudflare Tunnel helper for the FreeVPS workflows.
 
 Every run creates its own Cloudflare Tunnel on your domain and publishes one
-hostname per machine, then deletes tunnels left over from runs that ended more
+hostname per machine (the Windows run publishes two: native RDP plus a
+browser desktop), then deletes tunnels left over from runs that ended more
 than 7 hours ago.  Nothing but the tunnel and a DNS record is involved - no
 third-party tunnel service, and no Cloudflare Access app in front of the
 machine: the VM's own login password is what protects it.
 
 Usage:
-  python3 cf_tunnel.py setup <ssh|desktop|rdp|vnc> [...]
+  python3 cf_tunnel.py setup <ssh|desktop|rdp|web|vnc> [...]
 
 Environment:
   CF_API_TOKEN    (required) API token with these permissions:
@@ -18,7 +19,7 @@ Environment:
                     Zone     -> Zone: Read
   CF_DOMAIN       your domain, e.g. "example.com" (a subdomain of it also
                   works - it only decides WHICH of your zones is used)
-  CF_SSH_HOST / CF_DESKTOP_HOST / CF_RDP_HOST / CF_VNC_HOST
+  CF_SSH_HOST / CF_DESKTOP_HOST / CF_RDP_HOST / CF_WEB_HOST / CF_VNC_HOST
                   optional per-machine override: either a bare label
                   ("myssh" -> myssh.<zone>) or a full hostname one level
                   under the zone ("myssh.example.com")
@@ -49,6 +50,11 @@ SERVICES = {
     "ssh": ("ssh://localhost:22", "CF_SSH_HOST", 2222),
     "desktop": ("vnc://localhost:5901", "CF_DESKTOP_HOST", 5900),
     "rdp": ("tcp://localhost:3389", "CF_RDP_HOST", 3389),
+    # browser desktop (noVNC served over plain http on the runner; the edge
+    # terminates TLS, so users always see https).  A raw RDP client cannot
+    # talk to a Cloudflare hostname without cloudflared on the client, which
+    # is why this second, install-free path exists alongside native RDP.
+    "web": ("http://localhost:6080", "CF_WEB_HOST", 6080),
     "vnc": ("vnc://localhost:5900", "CF_VNC_HOST", 5900),
 }
 
@@ -304,6 +310,11 @@ def connect_instructions(name, hostname, port):
             f'  ssh -o ProxyCommand="cloudflared access ssh --hostname {hostname}" admin@{hostname}',
             f"  (or run: cloudflared access ssh --hostname {hostname})",
         ]
+    if name == "web":
+        return [
+            f"  open https://{hostname}/vnc.html in any browser (nothing to install)",
+            "  enter the VNC password shown below when asked",
+        ]
     return [
         f"  cloudflared access tcp --hostname {hostname} --url localhost:{port}",
         f"  then point your client at localhost:{port}",
@@ -354,7 +365,7 @@ def main():
     if sys.argv[1] == "setup":
         if len(sys.argv) < 3:
             sys.exit(
-                "cf_tunnel: setup needs at least one of: ssh, desktop, rdp, vnc"
+                "cf_tunnel: setup needs at least one of: ssh, desktop, rdp, web, vnc"
             )
         main_setup(sys.argv[2:])
     elif sys.argv[1] == "cleanup":
