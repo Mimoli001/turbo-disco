@@ -91,7 +91,8 @@
 | `CF_DOMAIN` | دامنهٔ شما | Zone به‌طور خودکار تشخیص داده می‌شود، پس لازم نیست دامنه و ساب‌دومین را جداگانه بنویسید؛ ساب‌دومینِ یکی از Zoneهای حساب‌تان هم پذیرفته می‌شود |
 | `CF_SSH_HOST` | نام اختیاری ماشین SSH لینوکس | مثلاً `my-ssh.example.com` یا فقط یک برچسب مثل `myvps` (→ `myvps.<zone>`)؛ خالی → `ssh.<zone>` |
 | `CF_DESKTOP_HOST` | نام اختیاری دسکتاپ لینوکس | خالی → `desktop.<zone>` |
-| `CF_RDP_HOST` | نام اختیاری ماشین ویندوز | خالی → `rdp.<zone>` |
+| `CF_RDP_HOST` | نام اختیاری ماشین ویندوز (RDP اصلی) | خالی → `rdp.<zone>` |
+| `CF_WEB_HOST` | نام اختیاری دسکتاپ مرورگری ویندوز | خالی → `web.<zone>` |
 | `CF_VNC_HOST` | نام اختیاری ماشین مک‌اواس | خالی → `vnc.<zone>` |
 | `CF_ACCOUNT_ID` | شناسهٔ حساب کلادفلر (اختیاری) | در صورت خالی‌بودن از Zone مربوط به `CF_DOMAIN` پیدا می‌شود |
 
@@ -140,12 +141,14 @@ Secretهای قدیمی (`LINUX_USER_PASSWORD`، `MAC_USER_PASSWORD`، `VNC_PASS
 <br>
 
 1. ورک‌فلوی **`Windows Virtual Machine`** را از تب `Actions` اجرا کنید.
-2. در لاگ job منتظر مرحلهٔ **`Print connection info`** بمانید — ساب‌دومین، نام کاربری و محل رمز عبور را چاپ می‌کند.
-3. [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) را روی رایانهٔ خود نصب کنید و اجرا کنید:
+2. در لاگ job منتظر مرحلهٔ **`Start the tunnel and keep Windows alive`** بمانید — ساب‌دومین‌ها، نام کاربری و محل رمزهای عبور را چاپ می‌کند.
+3. **راه اول — هر دستگاهی، بدون نصب هیچ‌چیز (پیشنهاد می‌شود):** در هر مرورگری (حتی موبایل) `https://web.<zone-شما>/vnc.html` را باز کنید و **رمز VNC** داخل لاگ را وارد کنید (۸ کاراکتر اول رمز ماشین).
+4. **راه دوم — Remote Desktop اصلی:** [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) را روی رایانهٔ خود نصب کنید و اجرا کنید:
    ```bash
    cloudflared access tcp --hostname rdp.SUBDOMAIN.DOMAIN --url localhost:3389
    ```
-4. برنامهٔ Remote Desktop Connection ویندوز (`mstsc`) یا Microsoft Remote Desktop را باز کنید و به `localhost:3389` وصل شوید.
+   سپس برنامهٔ Remote Desktop Connection ویندوز (`mstsc`) یا Microsoft Remote Desktop را باز کنید و به `localhost:3389` وصل شوید.
+   > برنامهٔ خام RDP نمی‌تواند مستقیم با ساب‌دومین Cloudflare حرف بزند (لبهٔ رایگان فقط HTTP/S می‌فهمد) — به همین دلیل یا راه مرورگر (راه اول) یا همین پل یک‌خطی `cloudflared` (راه دوم) لازم است.
 5. لذت ببرید!
 
 </details>

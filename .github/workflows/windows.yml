@@ -1,6 +1,5 @@
 name: Windows Virtual Machine
 on:
-  push:   # TEMP: trigger for live testing (revert to dispatch-only later)
   workflow_dispatch:
 
 defaults:
@@ -118,8 +117,7 @@ jobs:
           exit 1
         }
 
-        # Local checks: VNC server up, noVNC bridge serving, VNC auth offered.
-        $vncUp = @(netstat -ano | Select-String 'LISTENING' | Where-Object { $_.Line -match ':5900\s' }).Count -gt 0
+        # Local checks: VNC server up, noVNC bridge serving, VNC auth offered.        $vncUp = @(netstat -ano | Select-String 'LISTENING' | Where-Object { $_.Line -match ':5900\s' }).Count -gt 0
         Write-Host "local 5900 (VNC) listening: $vncUp"
         try {
           $page = Invoke-WebRequest -Uri 'http://127.0.0.1:6080/vnc.html' -TimeoutSec 15 -UseBasicParsing
@@ -162,12 +160,4 @@ jobs:
         Write-Host "=========================================="
         Write-Host "::notice::TUNNEL_HOSTNAMES=$Env:CF_RDP_HOSTNAME,$Env:CF_WEB_HOSTNAME"
 
-        # TEMP: verify the public browser path through the edge (revert later)
-        try {
-          $edge = Invoke-WebRequest -Uri "https://$Env:CF_WEB_HOSTNAME/vnc.html" -TimeoutSec 20 -UseBasicParsing
-          Write-Host "TEMP edge check: HTTP $($edge.StatusCode), has client: $($edge.Content -match 'noVNC')"
-        } catch {
-          Write-Host "TEMP edge check FAILED: $($_.Exception.Message)"
-        }
-
-        Start-Sleep -Seconds 180   # TEMP: 3 minutes for testing (restore 21600 later)
+        Start-Sleep -Seconds 21600

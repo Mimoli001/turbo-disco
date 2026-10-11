@@ -78,4 +78,20 @@
   Note: actionlint v1.7.7 flags this label as unknown — its built-in label
   list is stale (it still lists retired `windows-2019`/`ubuntu-20.04`);
   the actions/runner-images table confirms the label is valid.
+- The Windows run publishes TWO hostnames from one tunnel
+  (`cf_tunnel.py setup rdp web`): `rdp.<zone>` → `tcp://localhost:3389`
+  (native RDP) and `web.<zone>` → `http://localhost:6080` (noVNC).
+  The browser path is TightVNC 2.8.90 (silent MSI) + `python -m websockify
+  --web noVNC-1.7.0 6080 localhost:5900` with noVNC 1.7.0.
+- TightVNC blocks loopback by default, which breaks both the tunnel and the
+  bridge (they connect over 127.0.0.1): enforce `SERVER_ALLOW_LOOPBACK=1`
+  plus the `HKLM:\SOFTWARE\TightVNC\Server\AllowLoopback` DWORD and restart
+  the `tvnserver` service. A VNC handshake returning a "Sorry, loop..."
+  error string instead of auth types means loopback is still off.
+- `utils/novnc_proxy` is a bash script — on Windows run the websockify
+  module directly instead.
+- A raw RDP client can never talk to a Cloudflare hostname without
+  cloudflared on the client (free edge only speaks HTTP/S, nothing listens
+  on 3389) — do not promise direct mstsc-to-hostname; offer browser or the
+  `cloudflared access tcp` bridge.
 - macOS intentionally left on `macos-latest`.

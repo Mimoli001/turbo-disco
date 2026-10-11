@@ -91,7 +91,8 @@ That is all — **no Cloudflare Access, no Zero Trust dashboard, no identity pro
 | `CF_DOMAIN` | Your domain | The zone is detected automatically, so you never have to split domain and subdomain yourself — a subdomain of a zone on your account works too |
 | `CF_SSH_HOST` | Optional full hostname for the Linux SSH machine | e.g. `my-ssh.example.com`, or a bare label like `myvps` (→ `myvps.<zone>`). Empty → `ssh.<zone>` |
 | `CF_DESKTOP_HOST` | Optional full hostname for the Linux desktop | Empty → `desktop.<zone>` |
-| `CF_RDP_HOST` | Optional full hostname for the Windows machine | Empty → `rdp.<zone>` |
+| `CF_RDP_HOST` | Optional full hostname for the Windows machine (native RDP) | Empty → `rdp.<zone>` |
+| `CF_WEB_HOST` | Optional full hostname for the Windows browser desktop | Empty → `web.<zone>` |
 | `CF_VNC_HOST` | Optional full hostname for the macOS machine | Empty → `vnc.<zone>` |
 | `CF_ACCOUNT_ID` | Optional Cloudflare account id | Auto-discovered from the zone of `CF_DOMAIN` when left empty |
 
@@ -140,12 +141,14 @@ Legacy secrets (`LINUX_USER_PASSWORD`, `MAC_USER_PASSWORD`, `VNC_PASSWORD`, `WIN
 <br>
 
 1. Start **`Windows Virtual Machine`** from the `Actions` tab.
-2. Wait for the **`Print connection info`** step in the job log — it prints your hostname, the username and where the password comes from.
-3. Install [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) on your PC and run:
+2. Wait for the **`Start the tunnel and keep Windows alive`** step in the job log — it prints your hostnames, the username and where the passwords come from.
+3. **Option A — any device, nothing to install (recommended):** open `https://web.<your-zone>/vnc.html` in any browser (even a phone) and enter the **VNC password** from the log (first 8 characters of the machine password).
+4. **Option B — native Remote Desktop:** install [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) on your PC and run:
    ```bash
    cloudflared access tcp --hostname rdp.SUBDOMAIN.DOMAIN --url localhost:3389
    ```
-4. Open Remote Desktop Connection (`mstsc`) or Microsoft Remote Desktop and connect to `localhost:3389`.
+   then open Remote Desktop Connection (`mstsc`) or Microsoft Remote Desktop and connect to `localhost:3389`.
+   > A raw RDP client cannot talk to a Cloudflare hostname directly (the free edge only speaks HTTP/S) — that is why Option A (browser) or the one-command `cloudflared` bridge in Option B is required.
 5. Enjoy!
 
 </details>
