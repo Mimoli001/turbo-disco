@@ -1,52 +1,55 @@
 #!/bin/bash
-# Temporary probe: can a client reach the published hostname at all, with and
-# without an Access app in front of it?  Never fails the job - it only reports.
+# Temporary probe v2: compare an http:// origin with tcp:// and ssh:// origins,
+# none of them protected by an Access app.  Only reports; never fails the job.
 set -uo pipefail
 
-HOST="${PROBE_HOST:-}"
-echo "=========================================="
-echo "target host : $HOST"
-echo "--- DNS ---"
-getent hosts "$HOST" || echo "  (no A/AAAA record yet)"
-echo
+wait_dns() {
+  local host="$1"
+  for _ in $(seq 1 30); do
+    if getent hosts "$host" >/dev/null 2>&1; then echo "  DNS ok: $(getent hosts "$host" | head -1)"; return 0; fi
+    sleep 3
+  done
+  echo "  DNS: still no record for $host"
+  return 1
+}
 
-try_once() {
-  local label="$1"; shift
-  local port="$1"; shift
-  local logfile="$1"; shift
-  rm -f "$logfile"
-  echo "--- $label ---"
-  /tmp/cloudflared access tcp --hostname "$HOST" --url "localhost:$port" \
-    --logfile "$logfile" --log-level debug "$@" >/dev/null 2>&1 &
+echo "=========================================="
+echo "--- control: HTTP origin ---"
+echo "target: $PROBE_HTTP"
+wait_dns "$PROBE_HTTP" || true
+code=$(curl -sS -m 25 -o /tmp/http.body -w "%{http_code}" "https://$PROBE_HTTP/" 2>/tmp/http.err || true)
+echo "  curl returned HTTP status: [${code:-none}]"
+head -c 200 /tmp/http.body 2>/dev/null | head -3 | sed 's/^/  body: /'
+cat /tmp/http.err 2>/dev/null | sed 's/^/  err : /'
+
+tcp_test() {
+  local host="$1" port="$2" extra="${3:-}"
+  echo "--- origin type: $host ---"
+  wait_dns "$host" || true
+  rm -f /tmp/t.log
+  # shellcheck disable=SC2086
+  /tmp/cloudflared access tcp --hostname "$host" --url "localhost:$port" \
+    --logfile /tmp/t.log --log-level debug $extra >/dev/null 2>&1 &
   local pid=$!
   sleep 15
   if ss -ltn 2>/dev/null | grep -q ":$port "; then
-    echo "  local listener is UP on $port"
-    local banner
-    banner=$(timeout 6 bash -c "exec 3<>/dev/tcp/127.0.0.1/$port; head -c 40 <&3" 2>/dev/null || true)
-    echo "  bytes read from the origin: [$(printf '%s' "$banner" | cat -v)]"
-    echo "  VERDICT: TUNNEL_CARRIES_DATA"
+    echo "  local listener on $port: yes (this always happens - not a verdict)"
+  fi
+  local got
+  got=$(timeout 8 bash -c "exec 3<>/dev/tcp/127.0.0.1/$port; head -c 40 <&3" 2>/dev/null || true)
+  if [ -n "$got" ]; then
+    echo "  BANNER from the origin: [$(printf '%s' "$got" | cat -v)]"
+    echo "  VERDICT: DATA FLOWS"
   else
-    echo "  no local listener on $port"
-    echo "  VERDICT: NO_CONNECTION"
+    echo "  BANNER from the origin: (nothing)"
+    echo "  VERDICT: NO DATA"
   fi
   kill "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
-  echo "  --- cloudflared log (last 15 lines) ---"
-  tail -15 "$logfile" 2>/dev/null | sed 's/^/    /'
-  echo
+  grep -hoE '"message":"[^"]*"|"error":"[^"]*"' /tmp/t.log 2>/dev/null | tail -6 | sed 's/^/  log: /'
 }
 
-try_once "A: no credentials at all" 2222 /tmp/a.log
-
-if [ -f /tmp/svc_token.json ]; then
-  SVC_ID=$(python3 -c "import json;print(json.load(open('/tmp/svc_token.json'))['id'])")
-  SVC_SECRET=$(python3 -c "import json;print(json.load(open('/tmp/svc_token.json'))['secret'])")
-  echo "service token available (client_id=$SVC_ID)"
-  try_once "B: with an Access service token" 2223 /tmp/b.log \
-    --service-token-id "$SVC_ID" --service-token-secret "$SVC_SECRET"
-else
-  echo "no service token was created - skipping B"
-fi
+tcp_test "$PROBE_TCP" 2222
+tcp_test "$PROBE_SSH" 2223
 echo "=========================================="
 echo "probe finished"

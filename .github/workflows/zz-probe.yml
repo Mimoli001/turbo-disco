@@ -14,20 +14,15 @@ jobs:
       CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
       CF_DOMAIN: ${{ secrets.CF_DOMAIN }}
       CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-      # a bare label -> ssh.probe.<CF_DOMAIN>, so it never collides with the
-      # hostname the real workflows publish
-      CF_SSH_HOST: probe
     steps:
     - uses: actions/checkout@v7
 
-    - name: Probe the Cloudflare Access API
+    - name: Publish one hostname per origin type (no Access app)
       run: python3 probe.py
 
-    - name: Bring up a tunnel for the probe hostname
+    - name: Start cloudflared and a local HTTP server
       run: |
-        python3 cf_tunnel.py setup ssh
-        source /tmp/cf_tunnel.env
-        echo "PROBE_HOST=$CF_SSH_HOSTNAME" >> "$GITHUB_ENV"
+        python3 -m http.server 8080 >/dev/null 2>&1 &
         curl -fsSL -o /tmp/cloudflared \
           "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
         chmod +x /tmp/cloudflared
@@ -40,5 +35,5 @@ jobs:
         done
         if [ -n "$READY" ]; then echo "REGISTERED=yes"; else echo "REGISTERED=no"; tail -20 /tmp/cf.log; fi
 
-    - name: Test connectivity through the tunnel
+    - name: Test http vs tcp vs ssh origins
       run: bash probe_connect.sh
