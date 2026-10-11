@@ -64,5 +64,8 @@ jobs:
         chmod +x /usr/local/bin/cloudflared
     - name: Connect to the Windows machine (RDP)
       env:
-        WAIT_FOR_TUNNEL: "50"
-      run: bash e2e_test.sh rdp 30
+        # the 1033-readiness probe is unreliable for tcp:// origins (the edge
+        # answers 1033/502/200 interchangeably), so do not waste the server's
+        # lifetime on it - go straight to real protocol attempts instead
+        WAIT_FOR_TUNNEL: "3"
+      run: bash e2e_test.sh rdp 100
