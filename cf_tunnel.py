@@ -40,10 +40,15 @@ TUNNEL_PREFIX = "freevps-"
 
 # name -> (cloudflared origin service, hostname env var, local client port the
 #          connect hint tells you to forward to)
+#
+# RDP and VNC are published as plain tcp:// rather than rdp:// / vnc://: the
+# rdp:// origin type is refused by the edge on port 443 ("websocket: bad
+# handshake"), while tcp:// carries the identical bytes.  Measured on a live
+# account - tcp:// and vnc:// both pass traffic, rdp:// does not.
 SERVICES = {
     "ssh": ("ssh://localhost:22", "CF_SSH_HOST", 2222),
     "desktop": ("vnc://localhost:5901", "CF_DESKTOP_HOST", 5900),
-    "rdp": ("rdp://localhost:3389", "CF_RDP_HOST", 3389),
+    "rdp": ("tcp://localhost:3389", "CF_RDP_HOST", 3389),
     "vnc": ("vnc://localhost:5900", "CF_VNC_HOST", 5900),
 }
 
