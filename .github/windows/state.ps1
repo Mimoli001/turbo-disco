@@ -269,6 +269,22 @@ function Export-Metadata([string]$Metadata) {
         ConvertTo-Json -Depth 3 | Out-File -LiteralPath (Join-Path $system 'scheduled-tasks.json') -Encoding utf8
 }
 
+function Get-ChunkHmac([string]$Path) {
+    # Encrypt-then-MAC: SHA-256 detects accidental damage, while this keyed
+    # HMAC also prevents a modified release manifest from authenticating
+    # attacker-supplied chunks without STATE_PASSPHRASE.
+    $keyMaterial = [Text.Encoding]::UTF8.GetBytes("windows-state-hmac-v1`0$env:STATE_PASSPHRASE")
+    $key = [Security.Cryptography.SHA256]::HashData($keyMaterial)
+    $hmac = [Security.Cryptography.HMACSHA256]::new($key)
+    $stream = [IO.File]::OpenRead($Path)
+    try {
+        return [Convert]::ToHexString($hmac.ComputeHash($stream)).ToLowerInvariant()
+    } finally {
+        $stream.Dispose()
+        $hmac.Dispose()
+    }
+}
+
 function Split-EncryptedFile([string]$InputFile, [string]$OutputPrefix, [string]$OutputDirectory) {
     $inputStream = [IO.File]::OpenRead($InputFile)
     $buffer = New-Object byte[] 8MB
@@ -388,11 +404,12 @@ function Save-State {
                 name = $_.Name
                 size = $_.Length
                 sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+                hmac = Get-ChunkHmac $_.FullName
             }
         })
         $manifest = Join-Path $output "state-$timestamp.done.json"
         @{
-            version = 1
+            version = 2
             timestamp = $timestamp
             encryptedSize = (Get-Item -LiteralPath $encrypted).Length
             chunks = $manifestChunks
@@ -516,6 +533,13 @@ function Restore-State([switch]$VerifyOnly) {
                 if ($item.Length -ne [long]$chunk.size) { throw "Size mismatch for $($chunk.name)" }
                 $actual = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
                 if ($actual -ne $chunk.sha256) { throw "SHA-256 mismatch for $($chunk.name)" }
+                if ([int]$manifest.version -ge 2) {
+                    if (-not $chunk.hmac) { throw "Missing HMAC for $($chunk.name)" }
+                    $actualHmac = Get-ChunkHmac $path
+                    if ($actualHmac -ne $chunk.hmac) { throw "HMAC mismatch for $($chunk.name)" }
+                } else {
+                    Log 'Legacy checkpoint without HMAC; the final save will upgrade it to format 2.'
+                }
                 $chunkPaths += $path
             }
             $encrypted = Join-Path $root 'state.enc'
@@ -538,6 +562,14 @@ function Restore-State([switch]$VerifyOnly) {
 
             # No /MIR: restore never deletes files created by the new runner image.
             Copy-ProfileFromSource (Join-Path $stage 'Profile') $script:ProfileRoot -ForRestore
+            $canarySource = Join-Path $stage 'Profile\Desktop\OpenBot.lnk'
+            if (Test-Path -LiteralPath $canarySource) {
+                $canaryDestination = Join-Path $script:ProfileRoot 'Desktop\OpenBot.lnk'
+                if (-not (Test-Path -LiteralPath $canaryDestination)) {
+                    throw 'Restore canary failed: Desktop\OpenBot.lnk did not reach the live profile.'
+                }
+                Log 'RESTORE CANARY: Desktop\OpenBot.lnk verified in the live profile.'
+            }
             $hkcu = Join-Path $stage 'Metadata\Registry\HKCU.reg'
             if (Test-Path -LiteralPath $hkcu) {
                 & reg import $hkcu
@@ -562,7 +594,7 @@ function Restore-State([switch]$VerifyOnly) {
             Log "Checkpoint $timestamp could not be restored: $($_.Exception.Message)"
             # Once a checkpoint has been applied, never fall through and apply
             # an older one over the same profile.
-            if ($VerifyOnly -or $validated) { throw }
+            if ($validated) { throw }
         } finally {
             if (Test-Path -LiteralPath $root) {
                 Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue

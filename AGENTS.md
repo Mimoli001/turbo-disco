@@ -18,7 +18,10 @@
   completed (or a first run was initialized) in the same runner.
 - Checkpoints live in the private `windows-state` release. Assets are AES-256
   encrypted, split at 1900 MiB, and have per-chunk SHA-256 values in a
-  `state-<timestamp>.done.json` manifest. Chunks upload first, manifest last.
+  `state-<timestamp>.done.json` manifest. Format 2 adds per-chunk HMAC-SHA256
+  so a modified manifest cannot authenticate tampered chunks without the
+  passphrase. Format 1 remains restorable until the next final save upgrades it.
+  Chunks upload first, manifest last.
 - Retain three complete snapshots. A partial/corrupt newest snapshot must not
   hide older valid ones. Never apply an older snapshot after a newer snapshot
   has already been partially applied to the live profile.

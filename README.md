@@ -17,7 +17,7 @@
 - A consistent copy of the complete `runneradmin` user profile, made through the Volume Shadow Copy Service (VSS) so open files can be captured.
 - User registry settings, installed-application inventories, and Winget, Chocolatey, user-pip, and global-npm package manifests.
 - AES-256 encrypted checkpoints in the private `windows-state` GitHub Release. Files are split into **1,900 MiB** assets, below GitHub's 2 GiB per-asset limit.
-- SHA-256 verification, three complete checkpoints, and fallback to an older checkpoint when the newest one is incomplete or damaged.
+- SHA-256 corruption checks plus HMAC-SHA256 authentication, three complete checkpoints, and fallback to an older checkpoint when the newest one is incomplete or damaged.
 - Automatic checkpoint every 15 minutes when the profile changes, a final checkpoint after 320 minutes, and an optional fresh restored run.
 - OpenBot is restored with the profile, registered for user logon, and started inside the long-lived session step.
 
