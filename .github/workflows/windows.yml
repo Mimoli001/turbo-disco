@@ -1,6 +1,29 @@
 name: Windows Virtual Machine
+
 on:
   workflow_dispatch:
+    inputs:
+      session_minutes:
+        description: Minutes before the final checkpoint and automatic restart (maximum 330)
+        required: true
+        default: "320"
+      save_interval_minutes:
+        description: Checkpoint interval; unchanged profiles are not uploaded again
+        required: true
+        default: "15"
+      chain:
+        description: Start a fresh restored session after the final checkpoint
+        required: true
+        type: boolean
+        default: true
+
+concurrency:
+  group: windows-persistent
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write
 
 defaults:
   run:
@@ -10,13 +33,34 @@ jobs:
   build:
     runs-on: windows-2025-vs2026
     timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ secrets.GH_PAT }}
+      STATE_PASSPHRASE: ${{ secrets.STATE_PASSPHRASE }}
+      SESSION_MINUTES: ${{ inputs.session_minutes }}
+      SAVE_INTERVAL_MINUTES: ${{ inputs.save_interval_minutes }}
+      CHAIN: ${{ inputs.chain }}
 
     steps:
     - uses: actions/checkout@v7
 
-    - name: Download cloudflared
+    - name: Preflight and job clock
       run: |
-        Invoke-WebRequest https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -OutFile cloudflared.exe
+        if ([string]::IsNullOrWhiteSpace($Env:STATE_PASSPHRASE)) { throw 'STATE_PASSPHRASE secret is required.' }
+        if ([string]::IsNullOrWhiteSpace($Env:GH_TOKEN)) { throw 'GH_PAT secret is required for snapshots and automatic restart.' }
+        $minutes = [int]$Env:SESSION_MINUTES
+        if ($minutes -lt 30 -or $minutes -gt 330) { throw 'session_minutes must be between 30 and 330.' }
+        $interval = [int]$Env:SAVE_INTERVAL_MINUTES
+        if ($interval -lt 5 -or $interval -gt 120) { throw 'save_interval_minutes must be between 5 and 120.' }
+        "JOB_START=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())" | Out-File -FilePath $env:GITHUB_ENV -Append
+        "SESSION_SECONDS=$($minutes * 60)" | Out-File -FilePath $env:GITHUB_ENV -Append
+        "SAVE_EVERY=$($interval * 60)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+    - name: Restore the latest Windows checkpoint
+      timeout-minutes: 45
+      run: .github/windows/state.ps1 restore
+
+    - name: Download cloudflared
+      run: Invoke-WebRequest https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -OutFile cloudflared.exe
 
     - name: Enable Remote Desktop
       run: |
@@ -27,26 +71,24 @@ jobs:
     - name: Set RDP password
       run: |
         $admin = (Get-LocalUser | Where-Object { $_.SID.Value -like '*-500' }).Name
-        echo "RDP_USER=$admin" | Out-File -FilePath $env:GITHUB_ENV -Append
+        "RDP_USER=$admin" | Out-File -FilePath $env:GITHUB_ENV -Append
         $pw = $Env:PASSWORD
         if ([string]::IsNullOrEmpty($pw)) { $pw = $Env:WINDOWS_USER_PASSWORD }
         if ([string]::IsNullOrEmpty($pw)) {
           $pw = -join ((48..57)+(65..90)+(97..122) | Get-Random -Count 12 | ForEach-Object { [char]$_ })
-          Write-Host "No PASSWORD secret set - generated a random one (shown below)."
+          Write-Host 'No PASSWORD secret set - generated a random one (shown below).'
         }
         net user $admin $pw
-        echo "RDP_PASSWORD=$pw" | Out-File -FilePath $env:GITHUB_ENV -Append
+        "RDP_PASSWORD=$pw" | Out-File -FilePath $env:GITHUB_ENV -Append
       env:
         PASSWORD: ${{ secrets.PASSWORD }}
         WINDOWS_USER_PASSWORD: ${{ secrets.WINDOWS_USER_PASSWORD }}
 
-    - name: Install TightVNC server (for the browser desktop)
+    - name: Install TightVNC server for the browser desktop
       run: |
         $pw = $Env:RDP_PASSWORD
-        # Classic VNC auth accepts at most 8 characters - same convention as
-        # the Linux desktop (first 8 of the machine password).
         $vncPw = $pw.Substring(0, [Math]::Min(8, $pw.Length))
-        echo "VNC_PASSWORD=$vncPw" | Out-File -FilePath $env:GITHUB_ENV -Append
+        "VNC_PASSWORD=$vncPw" | Out-File -FilePath $env:GITHUB_ENV -Append
         Invoke-WebRequest https://www.tightvnc.com/download/2.8.90/tightvnc-2.8.90-gpl-setup-64bit.msi -OutFile tvnc.msi
         $msi = Start-Process msiexec -ArgumentList '/i','tvnc.msi','/quiet','/norestart',
           'ADDLOCAL=Server','SERVER_REGISTER_AS_SYSTEM=1',
@@ -55,21 +97,16 @@ jobs:
         if ($msi.ExitCode -ne 0) {
           Write-Host "::warning::TightVNC installer exited with $($msi.ExitCode) - browser desktop may be unavailable."
         }
-        # The tunnel and the noVNC bridge both reach VNC over loopback, which
-        # TightVNC blocks by default - enforce it in the registry too, then
-        # (re)start the service so the setting takes effect.
         try {
           Set-ItemProperty -Path 'HKLM:\SOFTWARE\TightVNC\Server' -Name 'AllowLoopback' -Value 1 -Type DWord -ErrorAction Stop
         } catch {
-          try {
-            New-Item -Path 'HKLM:\SOFTWARE\TightVNC\Server' -Force | Out-Null
-            New-ItemProperty -Path 'HKLM:\SOFTWARE\TightVNC\Server' -Name 'AllowLoopback' -Value 1 -PropertyType DWord -Force | Out-Null
-          } catch { Write-Host "AllowLoopback registry: $($_.Exception.Message)" }
+          New-Item -Path 'HKLM:\SOFTWARE\TightVNC\Server' -Force | Out-Null
+          New-ItemProperty -Path 'HKLM:\SOFTWARE\TightVNC\Server' -Name 'AllowLoopback' -Value 1 -PropertyType DWord -Force | Out-Null
         }
-        try { Restart-Service tvnserver -ErrorAction Stop } catch { try { Start-Service tvnserver -ErrorAction Stop } catch { Write-Host "start tvnserver: $($_.Exception.Message)" } }
+        try { Restart-Service tvnserver -ErrorAction Stop } catch { Start-Service tvnserver -ErrorAction Stop }
         Start-Sleep -Seconds 3
 
-    - name: Create Cloudflare tunnel for RDP (3389) and browser desktop
+    - name: Create Cloudflare tunnel for RDP and browser desktop
       run: python cf_tunnel.py setup rdp web
       env:
         CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
@@ -78,26 +115,24 @@ jobs:
         CF_WEB_HOST: ${{ secrets.CF_WEB_HOST }}
         CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
 
-
-    # Starting the tunnel, the browser bridge, printing the connection info
-    # and keeping the machine alive happen inside ONE step on purpose:
-    # a process launched by Start-Process in its own step is already gone by
-    # the time the next step runs, so the tunnel would die seconds after
-    # "Tunnel is up".
-    - name: Start the tunnel and keep Windows alive
+    # The tunnel, browser bridge, OpenBot and the save loop deliberately share
+    # one step. Processes started in an earlier step do not survive on Windows.
+    - name: Start services and run the persistent session
+      id: hold
       run: |
         Remove-Item cf.log, cf.err -ErrorAction SilentlyContinue
         Start-Process -FilePath .\cloudflared.exe -ArgumentList 'tunnel','run','--token',$Env:CF_TUNNEL_TOKEN -RedirectStandardOutput cf.log -RedirectStandardError cf.err -WindowStyle Hidden
 
-        # noVNC bridge: browser (https via the tunnel) -> websockify -> VNC.
-        # Must start here, not in an earlier step (see the note above).
-        # NOTE: utils/novnc_proxy is a bash script, so on Windows run the
-        # websockify module directly with --web pointing at the noVNC files.
         python -m pip install --quiet --disable-pip-version-check websockify
         Invoke-WebRequest https://github.com/novnc/noVNC/archive/refs/tags/v1.7.0.tar.gz -OutFile novnc.tgz
         tar -xzf novnc.tgz
         Remove-Item novnc.log, novnc.err -ErrorAction SilentlyContinue
         Start-Process -FilePath python -ArgumentList '-m','websockify','--web','noVNC-1.7.0','6080','localhost:5900' -RedirectStandardOutput novnc.log -RedirectStandardError novnc.err -WindowStyle Hidden
+
+        $openbot = Join-Path $env:LOCALAPPDATA 'Programs\OpenBot\OpenBot.exe'
+        if ((Test-Path -LiteralPath $openbot) -and -not (Get-Process OpenBot -ErrorAction SilentlyContinue)) {
+          Start-Process -FilePath $openbot
+        }
 
         $ready = $null
         foreach ($i in 1..60) {
@@ -111,29 +146,27 @@ jobs:
           Start-Sleep -Seconds 1
         }
         if (-not $ready) {
-          Write-Host "::error::cloudflared tunnel did not register."
+          Write-Host '::error::cloudflared tunnel did not register.'
           Get-Content cf.err -ErrorAction SilentlyContinue | Select-Object -Last 40
           Get-Content cf.log -ErrorAction SilentlyContinue | Select-Object -Last 40
           exit 1
         }
 
-        # Local checks: VNC server up, noVNC bridge serving, VNC auth offered.        $vncUp = @(netstat -ano | Select-String 'LISTENING' | Where-Object { $_.Line -match ':5900\s' }).Count -gt 0
+        $vncUp = @(netstat -ano | Select-String 'LISTENING' | Where-Object { $_.Line -match ':5900\s' }).Count -gt 0
         Write-Host "local 5900 (VNC) listening: $vncUp"
         try {
           $page = Invoke-WebRequest -Uri 'http://127.0.0.1:6080/vnc.html' -TimeoutSec 15 -UseBasicParsing
           Write-Host "local noVNC page: HTTP $($page.StatusCode), has client: $($page.Content -match 'noVNC')"
         } catch {
           Write-Host "local noVNC page FAILED: $($_.Exception.Message)"
-          Write-Host "--- novnc.err ---"
           Get-Content novnc.err -ErrorAction SilentlyContinue | Select-Object -Last 15
-          Write-Host "--- novnc.log ---"
-          Get-Content novnc.log -ErrorAction SilentlyContinue | Select-Object -Last 8
         }
         try {
           $t = New-Object System.Net.Sockets.TcpClient
           $t.ReceiveTimeout = 5000
           $t.Connect('127.0.0.1', 5900)
           $s = $t.GetStream()
+          $s.ReadTimeout = 5000
           $banner = New-Object byte[] 12
           $n = $s.Read($banner, 0, 12)
           $s.Write($banner, 0, $n)
@@ -146,18 +179,49 @@ jobs:
         } catch {
           Write-Host "VNC auth probe FAILED: $($_.Exception.Message)"
         }
+        try {
+          $rdp = New-Object System.Net.Sockets.TcpClient
+          $rdp.ReceiveTimeout = 5000
+          $rdp.Connect('127.0.0.1', 3389)
+          $rs = $rdp.GetStream()
+          $rs.ReadTimeout = 5000
+          $request = [Convert]::FromHexString('030000130ee000000000000100080003000000')
+          $rs.Write($request, 0, $request.Length)
+          $response = New-Object byte[] 19
+          $count = $rs.Read($response, 0, $response.Length)
+          $rdp.Close()
+          if ($count -lt 6 -or $response[5] -ne 0xd0) { throw 'Invalid X.224 Connection Confirm.' }
+          Write-Host 'RDP protocol check: valid X.224 Connection Confirm.'
+        } catch {
+          Write-Host "RDP protocol probe FAILED: $($_.Exception.Message)"
+        }
+        try {
+          $public = Invoke-WebRequest -Uri "https://$Env:CF_WEB_HOSTNAME/vnc.html" -TimeoutSec 20 -UseBasicParsing
+          Write-Host "public noVNC page: HTTP $($public.StatusCode)"
+        } catch {
+          Write-Host "public noVNC check FAILED: $($_.Exception.Message)"
+        }
 
-        Write-Host "=========================================="
+        Write-Host '=========================================='
         Write-Host "Tunnel is up: $Env:CF_RDP_HOSTNAME and $Env:CF_WEB_HOSTNAME"
-        Write-Host "Native Remote Desktop (cloudflared on your PC):"
+        Write-Host 'Native Remote Desktop (cloudflared on your PC):'
         Write-Host "  cloudflared access tcp --hostname $Env:CF_RDP_HOSTNAME --url localhost:3389"
-        Write-Host "  then: mstsc /v:localhost:3389"
+        Write-Host '  then: mstsc /v:localhost:3389'
         Write-Host "Username: $Env:RDP_USER"
         Write-Host "Password: $Env:RDP_PASSWORD"
-        Write-Host "Browser desktop (any device, nothing to install):"
+        Write-Host 'Browser desktop (any device, nothing to install):'
         Write-Host "  open https://$Env:CF_WEB_HOSTNAME/vnc.html"
         Write-Host "  VNC password: $Env:VNC_PASSWORD"
-        Write-Host "=========================================="
+        Write-Host '=========================================='
         Write-Host "::notice::TUNNEL_HOSTNAMES=$Env:CF_RDP_HOSTNAME,$Env:CF_WEB_HOSTNAME"
 
-        Start-Sleep -Seconds 21600
+        & .github/windows/state.ps1 hold
+
+    - name: Final checkpoint after cancellation or an interrupted hold
+      if: always() && steps.hold.outputs.saved != 'true'
+      timeout-minutes: 20
+      run: .github/windows/state.ps1 final
+
+    - name: Continue in a fresh restored run
+      if: steps.hold.outputs.chain == 'true' && env.CHAIN == 'true'
+      run: gh workflow run windows.yml -R "$env:GITHUB_REPOSITORY" --ref "$env:GITHUB_REF_NAME" -F session_minutes="$env:SESSION_MINUTES" -F save_interval_minutes="$env:SAVE_INTERVAL_MINUTES" -F chain=true

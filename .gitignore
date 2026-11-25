@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+cloudflared.exe
+cf.log
+cf.err
+tvnc.msi
+novnc.tgz
+novnc.log
+novnc.err
+noVNC-*/

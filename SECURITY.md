@@ -1,21 +1,13 @@
 # Security Policy
 
-## Supported Versions
+## Supported version
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
+Only the `main` branch of `Mimoli001/turbo-disco` receives fixes. This project is intended for a private repository and a user-owned GitHub Actions runner.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
+## Reporting a vulnerability
 
-## Reporting a Vulnerability
+Open a private security advisory on GitHub instead of publishing credentials, checkpoint contents, tunnel addresses, or a working exploit. Do not test against accounts, runners, domains, or systems you do not own or have explicit permission to assess.
 
-Use this section to tell people how to report a vulnerability.
+## Checkpoint data
 
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+Checkpoints contain sensitive user profiles and may contain reusable sign-in tokens. Keep `STATE_PASSPHRASE` and `GH_PAT` separate, rotate them if repository access is compromised, and remember that changing the passphrase prevents decryption of older checkpoints.
