@@ -296,7 +296,10 @@ def export_env(values):
     except OSError:
         pass
     for key, value in values.items():
-        print(f"{key}={value}")
+        # The run token belongs only in GITHUB_ENV/the local env file. Printing
+        # it would expose a live tunnel credential in the Actions log.
+        if key != "CF_TUNNEL_TOKEN":
+            print(f"{key}={value}")
 
 
 def connect_instructions(name, hostname, port):

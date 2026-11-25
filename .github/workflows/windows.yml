@@ -218,10 +218,11 @@ jobs:
         & .github/windows/state.ps1 hold
 
     - name: Final checkpoint after cancellation or an interrupted hold
+      id: final
       if: always() && steps.hold.outputs.saved != 'true'
       timeout-minutes: 20
       run: .github/windows/state.ps1 final
 
     - name: Continue in a fresh restored run
-      if: steps.hold.outputs.chain == 'true' && env.CHAIN == 'true'
+      if: always() && !cancelled() && env.CHAIN == 'true' && (steps.hold.outputs.chain == 'true' || steps.final.outputs.chain == 'true')
       run: gh workflow run windows.yml -R "$env:GITHUB_REPOSITORY" --ref "$env:GITHUB_REF_NAME" -F session_minutes="$env:SESSION_MINUTES" -F save_interval_minutes="$env:SAVE_INTERVAL_MINUTES" -F chain=true

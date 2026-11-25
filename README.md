@@ -55,7 +55,7 @@ Keep the repository **private**. Checkpoints deliberately contain browser profil
 | `save_interval_minutes` | `15` | 5–120 |
 | `chain` | `true` | true / false |
 
-The time budget leaves room for the final multi-gigabyte upload before GitHub's hard six-hour limit. A new dispatch waits on the `windows-persistent` concurrency group until the previous run has completely finished.
+The time budget leaves room for the final multi-gigabyte upload before GitHub's hard six-hour limit. Independently of the requested session length, the hold stops by job minute 330, reserving 20 minutes for final upload and 10 minutes for cleanup. A new dispatch waits on the `windows-persistent` concurrency group until the previous run has completely finished. If the hold is interrupted, a successful fallback final checkpoint can also dispatch the successor; cancellation does not restart it.
 
 To request a checkpoint from inside Windows:
 

@@ -81,9 +81,20 @@ function Initialize-State {
 }
 
 function Get-ReleaseAssets {
-    $json = & gh release view $script:Tag -R $script:Repo --json assets 2>$null
-    if ($LASTEXITCODE -ne 0) { return @() }
-    return @(($json | ConvertFrom-Json).assets)
+    $result = & gh release view $script:Tag -R $script:Repo --json assets 2>&1
+    $code = $LASTEXITCODE
+    if ($code -ne 0) {
+        $message = $result | Out-String
+        # Only this confirmed case means "no snapshots". Network errors,
+        # permission failures and malformed responses must fail closed.
+        if ($message -match 'release not found') { return @() }
+        throw "Could not list checkpoint assets: $message"
+    }
+    try {
+        return @(($result | Out-String | ConvertFrom-Json).assets)
+    } catch {
+        throw "Checkpoint asset listing was not valid JSON: $($_.Exception.Message)"
+    }
 }
 
 function Ensure-Release {
@@ -206,6 +217,9 @@ function Copy-ProfileFromSource([string]$Source, [string]$Destination, [switch]$
     }
     & robocopy @copyArgs
     $code = $LASTEXITCODE
+    if ($code -ge 4 -and $code -le 7) {
+        throw "robocopy reported mismatched files (code $code)"
+    }
     if ($code -ge 8) {
         if (-not $ForRestore) { throw "robocopy exited with code $code" }
         # Windows owns and memory-maps several built-in app databases for the
@@ -430,8 +444,15 @@ function Save-State {
         }
         [IO.File]::WriteAllText($script:FingerprintFile, $fingerprint)
 
-        $keep = @(Get-SnapshotStamps | Select-Object -First $script:Keep)
-        foreach ($asset in Get-ReleaseAssets) {
+        # Reuse the successful listing above. A second transient empty listing
+        # must never turn into permission to delete previous good snapshots.
+        $keep = @($assets | ForEach-Object {
+            if ($_.name -match '^state-(\d+)\.done\.json$') { $Matches[1] }
+        } | Sort-Object -Descending -Unique | Select-Object -First $script:Keep)
+        if ($keep -notcontains [string]$timestamp) {
+            throw 'Retention refused: the newly verified checkpoint is missing from the keep list.'
+        }
+        foreach ($asset in $assets) {
             if ($asset.name -match '^state-(\d+)\.' -and $keep -notcontains $Matches[1]) {
                 & gh release delete-asset $script:Tag $asset.name -R $script:Repo -y *> $null
             }
@@ -478,8 +499,34 @@ function Restore-Packages([string]$Packages) {
     $pip = Join-Path $Packages 'pip-user.txt'
     if ((Test-Path -LiteralPath $pip) -and (Get-Item -LiteralPath $pip).Length -gt 0 -and
         (Get-Command python -ErrorAction SilentlyContinue)) {
-        & python -m pip install --user -r $pip
-        if ($LASTEXITCODE -ne 0) { Log 'WARNING: some user Python packages could not be restored.' }
+        $installedJson = & python -m pip list --format=json 2>$null | Out-String
+        $installedNames = @{}
+        try {
+            foreach ($package in ($installedJson | ConvertFrom-Json)) {
+                $normalized = ($package.name.ToLowerInvariant() -replace '[_.]', '-')
+                $installedNames[$normalized] = $true
+            }
+        } catch {
+            Log 'WARNING: installed Python packages could not be enumerated; pip restore skipped.'
+            $installedNames = $null
+        }
+        if ($null -ne $installedNames) {
+            foreach ($requirement in [IO.File]::ReadLines($pip)) {
+                $line = $requirement.Trim()
+                if (-not $line -or $line.StartsWith('#')) { continue }
+                $match = [Text.RegularExpressions.Regex]::Match($line, '^([A-Za-z0-9_.-]+)(==|@)')
+                if (-not $match.Success) {
+                    Log "WARNING: unsupported pip requirement skipped: $line"
+                    continue
+                }
+                $name = $match.Groups[1].Value.ToLowerInvariant() -replace '[_.]', '-'
+                if (-not $installedNames.ContainsKey($name)) {
+                    & python -m pip install --user $line
+                    if ($LASTEXITCODE -ne 0) { Log "WARNING: user Python package $name could not be restored." }
+                    else { $installedNames[$name] = $true }
+                }
+            }
+        }
     }
     $npm = Join-Path $Packages 'npm-global.json'
     if ((Test-Path -LiteralPath $npm) -and (Get-Command npm -ErrorAction SilentlyContinue)) {
@@ -609,7 +656,13 @@ function Hold-State {
     if (-not (Test-Path -LiteralPath $script:RestoreMarker)) {
         throw 'Restore must run before the session hold loop.'
     }
-    $deadline = $script:JobStart + $script:SessionSeconds
+    # Never let a long restore consume the final-save budget. The hard job cap
+    # is 360 minutes; stop the hold by minute 330 at the latest, leaving 20
+    # minutes for final upload and another 10 for cleanup/post steps.
+    $deadline = [Math]::Min(
+        $script:JobStart + $script:SessionSeconds,
+        $script:JobStart + 19800
+    )
     $lastSave = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
     Log "Autosave every $($script:SaveEvery / 60) minutes; final checkpoint at $([DateTimeOffset]::FromUnixTimeSeconds($deadline).ToString('u'))."
     while ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() -lt $deadline) {
@@ -654,6 +707,12 @@ switch ($Command) {
     'verify' { Restore-State -VerifyOnly }
     'save' { Save-State }
     'hold' { Hold-State }
-    'final' { Save-State -Force }
+    'final' {
+        Save-State -Force
+        if ($env:GITHUB_OUTPUT) {
+            'saved=true' | Out-File -LiteralPath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            'chain=true' | Out-File -LiteralPath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        }
+    }
     'status' { Show-Status }
 }

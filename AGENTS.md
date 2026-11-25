@@ -24,7 +24,10 @@
   Chunks upload first, manifest last.
 - Retain three complete snapshots. A partial/corrupt newest snapshot must not
   hide older valid ones. Never apply an older snapshot after a newer snapshot
-  has already been partially applied to the live profile.
+  has already been partially applied to the live profile. Asset-list API errors
+  fail closed; only a confirmed `release not found` means no snapshots. Retention
+  reuses one successful listing and refuses to delete unless the new timestamp
+  is present in the keep list.
 - The source is the complete `runneradmin` user profile, plus HKCU and package
   manifests. VSS gives a consistent view of open files. Only regenerable caches
   and `AppData/Local/Microsoft/WindowsApps` are excluded; WindowsApps contains
@@ -45,7 +48,9 @@
   server-invalidated logins can require reauthentication. Do not promise that
   every login survives.
 - Chunking solves only the 2 GiB per-asset limit, not bandwidth or upload time.
-  Leave enough time before the hard 6h job cap for the final save.
+  Leave enough time before the hard 6h job cap for the final save. Independently
+  of the requested session length, hold stops by job minute 330 so a 20-minute
+  final save and 10 minutes of cleanup remain available.
 - `verify` must remain non-destructive: download, verify, decrypt, and extract
   into scratch space without applying to the live profile.
 
@@ -68,7 +73,8 @@
 - Published names must sit exactly ONE label above the zone. The free universal
   cert covers only `zone` and `*.zone`. `cf_tunnel.py::resolve_route()` flattens
   a subdomain `CF_DOMAIN` to `<kind>.<zone>` and writes notes to stderr.
-- Windows hostnames: `rdp.<zone>` and `web.<zone>`.
+- Windows hostnames: `rdp.<zone>` and `web.<zone>`. `CF_TUNNEL_TOKEN` goes only
+  to `GITHUB_ENV`/the local env file; never print it into Actions logs.
 - **RDP must be published as `tcp://localhost:3389`, not `rdp://`.** The edge
   refuses `rdp://` on 443; `tcp://` carries identical bytes.
 - Tunnel pruning deletes only `freevps-*` tunnels older than 7h so an active run
