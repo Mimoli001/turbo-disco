@@ -30,8 +30,12 @@
   source.** Create a temporary directory symlink to the shadow device with
   `mklink /d`, copy through that path, remove the link, then remove the shadow.
 - Restore uses Robocopy without `/MIR`: never delete files supplied by the new
-  runner. HKLM is never wholesale imported. Winget uses `--no-upgrade` and
-  `--ignore-unavailable`; other package managers install only missing packages.
+  runner. Built-in Windows databases (WebCache, Notifications, packaged-app
+  hives, etc.) can be memory-mapped for the whole session; restore skips files
+  that remain locked with a visible warning instead of failing the entire run.
+  Save still requires Robocopy success. HKLM is never wholesale imported.
+  Winget uses `--no-upgrade` and `--ignore-unavailable`; other package managers
+  install only missing packages.
 - This is user-state persistence, not a full disk/RAM image. DPAPI-protected or
   server-invalidated logins can require reauthentication. Do not promise that
   every login survives.

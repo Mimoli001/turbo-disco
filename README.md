@@ -81,7 +81,7 @@ To inspect or validate the stored state locally on the runner:
 - Missing Winget packages without upgrading already installed packages, plus Chocolatey, user-pip, and global-npm packages when their package manager is available.
 - OpenBot's per-user installation and logon registration.
 
-The restore never uses `/MIR` and never deletes files that came with the new runner. Windows itself, preinstalled system files, kernel state, running processes, and RAM are not replaced. Package restoration can take longer for applications whose old versions are no longer available.
+The restore never uses `/MIR` and never deletes files that came with the new runner. Built-in Windows databases that remain memory-mapped, such as WebCache or notification databases, are skipped with a warning instead of aborting the entire restore. Windows itself, preinstalled system files, kernel state, running processes, and RAM are not replaced. Package restoration can take longer for applications whose old versions are no longer available.
 
 Chunking removes the **per-file** 2 GiB release-asset limit; it does not eliminate upload time, bandwidth, or GitHub service limits. The 15-minute default is intended for a multi-gigabyte Windows profile.
 

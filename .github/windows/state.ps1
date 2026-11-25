@@ -166,16 +166,28 @@ function Copy-ProfileFromSource([string]$Source, [string]$Destination, [switch]$
     $excluded = @($script:ExcludedPrefixes | ForEach-Object {
         Join-Path $Source ($_.Replace('/', '\'))
     })
-    $args = @($Source, $Destination, '/E', '/B', '/COPY:DAT', '/DCOPY:T', '/XJ',
-        '/R:1', '/W:1', '/NP', '/NFL', '/NDL', '/NJH', '/NJS')
-    if ($excluded.Count -gt 0) { $args += '/XD'; $args += $excluded }
+    $retries = if ($ForRestore) { '/R:0' } else { '/R:1' }
+    $copyArgs = @($Source, $Destination, '/E', '/B', '/COPY:DAT', '/DCOPY:T', '/XJ',
+        $retries, '/W:1', '/NP', '/NFL', '/NDL', '/NJH', '/NJS')
+    if ($excluded.Count -gt 0) { $copyArgs += '/XD'; $copyArgs += $excluded }
     if ($ForRestore) {
         # These hives belong to the logged-on runner account and cannot be
         # overwritten in place. HKCU.reg is imported separately below.
-        $args += '/XF'
-        $args += @('NTUSER.DAT', 'NTUSER.DAT*', 'ntuser.dat.*', 'UsrClass.dat', 'UsrClass.dat*')
+        $copyArgs += '/XF'
+        $copyArgs += @('NTUSER.DAT', 'NTUSER.DAT*', 'ntuser.dat.*', 'UsrClass.dat', 'UsrClass.dat*',
+            'WebCacheLock.dat')
     }
-    Invoke-Exe robocopy $args @(0, 1, 2, 3, 4, 5, 6, 7)
+    & robocopy @copyArgs
+    $code = $LASTEXITCODE
+    if ($code -ge 8) {
+        if (-not $ForRestore) { throw "robocopy exited with code $code" }
+        # Windows owns and memory-maps several built-in app databases for the
+        # lifetime of the runner session. Keep every file that can be replaced
+        # and report skipped machine-specific files instead of losing the whole
+        # restore. Browser and user application data is normally not locked at
+        # this early point in the workflow.
+        Log "WARNING: Robocopy code $code during restore; files locked by Windows were skipped (details above)."
+    }
     if ($PruneCaches) {
         Get-ChildItem -LiteralPath $Destination -Recurse -Force -Directory -ErrorAction SilentlyContinue |
             Where-Object { $script:CacheNames -contains $_.Name } |
@@ -231,51 +243,51 @@ function Export-Metadata([string]$Metadata) {
 }
 
 function Split-EncryptedFile([string]$InputFile, [string]$OutputPrefix, [string]$OutputDirectory) {
-    $input = [IO.File]::OpenRead($InputFile)
+    $inputStream = [IO.File]::OpenRead($InputFile)
     $buffer = New-Object byte[] 8MB
     $chunks = @()
     try {
         $index = 0
-        while ($input.Position -lt $input.Length) {
+        while ($inputStream.Position -lt $inputStream.Length) {
             $path = '{0}{1:D3}' -f $OutputPrefix, $index
-            $output = [IO.File]::Create($path)
+            $outputStream = [IO.File]::Create($path)
             $remaining = $script:ChunkBytes
             try {
                 while ($remaining -gt 0) {
                     $wanted = [int][Math]::Min($buffer.Length, $remaining)
-                    $read = $input.Read($buffer, 0, $wanted)
+                    $read = $inputStream.Read($buffer, 0, $wanted)
                     if ($read -eq 0) { break }
-                    $output.Write($buffer, 0, $read)
+                    $outputStream.Write($buffer, 0, $read)
                     $remaining -= $read
                 }
             } finally {
-                $output.Dispose()
+                $outputStream.Dispose()
             }
             $chunks += Get-Item -LiteralPath $path
             $index++
         }
     } finally {
-        $input.Dispose()
+        $inputStream.Dispose()
     }
     return $chunks
 }
 
 function Join-EncryptedChunks([string]$Destination, [string[]]$Paths) {
-    $output = [IO.File]::Create($Destination)
+    $outputStream = [IO.File]::Create($Destination)
     $buffer = New-Object byte[] 8MB
     try {
         foreach ($path in $Paths) {
-            $input = [IO.File]::OpenRead($path)
+            $inputStream = [IO.File]::OpenRead($path)
             try {
-                while (($read = $input.Read($buffer, 0, $buffer.Length)) -gt 0) {
-                    $output.Write($buffer, 0, $read)
+                while (($read = $inputStream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+                    $outputStream.Write($buffer, 0, $read)
                 }
             } finally {
-                $input.Dispose()
+                $inputStream.Dispose()
             }
         }
     } finally {
-        $output.Dispose()
+        $outputStream.Dispose()
     }
 }
 
