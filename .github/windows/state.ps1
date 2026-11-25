@@ -129,6 +129,33 @@ function Get-StateFingerprint {
             $bytes = [Text.Encoding]::UTF8.GetBytes($line)
             $hash.AppendData($bytes)
         }
+        # Application installs and registry-only changes must also trigger a
+        # checkpoint even when no profile file timestamp changed.
+        $hive = Join-Path $script:WorkRoot 'fingerprint-hkcu.reg'
+        try {
+            & reg export HKCU $hive /y *> $null
+            if ($LASTEXITCODE -eq 0) {
+                $registryBytes = [IO.File]::ReadAllBytes($hive)
+                $hash.AppendData($registryBytes)
+            }
+        } finally {
+            Remove-Item -LiteralPath $hive -Force -ErrorAction SilentlyContinue
+        }
+        $inventory = @(Get-ItemProperty @(
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+            'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
+        ) -ErrorAction SilentlyContinue | Select-Object DisplayName, DisplayVersion, Publisher, InstallLocation |
+            ConvertTo-Json -Compress)
+        $packageState = @($inventory)
+        if (Get-Command python -ErrorAction SilentlyContinue) {
+            $packageState += & python -m pip freeze --user 2>$null
+        }
+        if (Get-Command npm -ErrorAction SilentlyContinue) {
+            $packageState += & npm list -g --depth=0 --json 2>$null
+        }
+        $metadataBytes = [Text.Encoding]::UTF8.GetBytes(($packageState -join "`n"))
+        $hash.AppendData($metadataBytes)
         return [Convert]::ToHexString($hash.GetHashAndReset()).ToLowerInvariant()
     } finally {
         $hash.Dispose()
@@ -513,7 +540,13 @@ function Restore-State([switch]$VerifyOnly) {
             Copy-ProfileFromSource (Join-Path $stage 'Profile') $script:ProfileRoot -ForRestore
             $hkcu = Join-Path $stage 'Metadata\Registry\HKCU.reg'
             if (Test-Path -LiteralPath $hkcu) {
-                Invoke-Exe reg @('import', $hkcu)
+                & reg import $hkcu
+                if ($LASTEXITCODE -ne 0) {
+                    # A stock HKCU export can contain protected keys owned by
+                    # Windows. Reg imports the accessible keys before reporting
+                    # the protected one; do not discard the whole restored profile.
+                    Log 'WARNING: some protected HKCU keys could not be imported (details above).'
+                }
             }
             Restore-Packages (Join-Path $stage 'Metadata\Packages')
             $openbot = Join-Path $env:LOCALAPPDATA 'Programs\OpenBot\OpenBot.exe'

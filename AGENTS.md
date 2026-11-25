@@ -34,6 +34,8 @@
   hives, etc.) can be memory-mapped for the whole session; restore skips files
   that remain locked with a visible warning instead of failing the entire run.
   Save still requires Robocopy success. HKLM is never wholesale imported.
+  HKCU import is best-effort because stock exports contain protected keys;
+  report the failure but keep the accessible settings and restored profile.
   Winget uses `--no-upgrade` and `--ignore-unavailable`; other package managers
   install only missing packages.
 - This is user-state persistence, not a full disk/RAM image. DPAPI-protected or
