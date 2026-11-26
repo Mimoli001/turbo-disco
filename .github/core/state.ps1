@@ -359,7 +359,7 @@ function Save-State {
     try {
         $locked = $mutex.WaitOne([TimeSpan]::FromSeconds(90))
         if (-not $locked) { throw 'Another checkpoint is still running.' }
-        $openbotStorage = Join-Path $PSScriptRoot 'openbot-secret-storage.ps1'
+        $openbotStorage = Join-Path $PSScriptRoot 'helper.ps1'
         if (Test-Path -LiteralPath $openbotStorage) {
             try {
                 & $openbotStorage export

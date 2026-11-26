@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-cf_tunnel.py - ephemeral Cloudflare Tunnel helper for the FreeVPS workflows.
+runtime.py - ephemeral Cloudflare Tunnel helper for the FreeVPS workflows.
 
 Every run creates its own Cloudflare Tunnel on your domain and publishes two
 hostnames: native RDP plus a browser desktop. It also deletes tunnels left
@@ -9,7 +9,7 @@ DNS records is involved - no third-party tunnel service, and no Cloudflare
 Access app in front of the machine: the VM's own login password protects it.
 
 Usage:
-  python3 cf_tunnel.py setup rdp web
+  python3 runtime.py setup rdp web
 
 Environment:
   CF_API_TOKEN    (required) API token with these permissions:
@@ -78,7 +78,7 @@ def items(payload):
 def env(name, required=False):
     value = os.environ.get(name, "").strip()
     if required and not value:
-        sys.exit(f"cf_tunnel: environment variable {name} is required")
+        sys.exit(f"runtime: environment variable {name} is required")
     return value
 
 
@@ -103,7 +103,7 @@ def api(method, path, body=None):
             payload = {}
         return exc.code, payload
     except urllib.error.URLError as exc:
-        sys.exit(f"cf_tunnel: cannot reach the Cloudflare API: {exc}")
+        sys.exit(f"runtime: cannot reach the Cloudflare API: {exc}")
 
 
 def account_id(zone=None):
@@ -122,7 +122,7 @@ def account_id(zone=None):
     accounts = items(payload)
     if not accounts:
         sys.exit(
-            "cf_tunnel: no Cloudflare account visible to this token "
+            "runtime: no Cloudflare account visible to this token "
             "(grant Account permissions, or set CF_ACCOUNT_ID explicitly)"
         )
     return accounts[0]["id"]
@@ -139,7 +139,7 @@ def find_zone(hostname):
             return zone
     seen = ", ".join(z["name"] for z in zones) or "(none)"
     sys.exit(
-        f"cf_tunnel: no Cloudflare zone on this account contains {hostname}. "
+        f"runtime: no Cloudflare zone on this account contains {hostname}. "
         f"Zones visible to this token: {seen}. "
         "Set CF_DOMAIN to a domain whose DNS is hosted on this account."
     )
@@ -162,7 +162,7 @@ def resolve_route(name):
         anchor = base
     else:
         sys.exit(
-            "cf_tunnel: set CF_DOMAIN (your domain), or set "
+            "runtime: set CF_DOMAIN (your domain), or set "
             f"{host_env} to a full hostname"
         )
 
@@ -179,7 +179,7 @@ def resolve_route(name):
             # stderr, not stdout: callers capture the resolved hostname from
             # stdout and this note must not become part of it
             print(
-                f"cf_tunnel: note: CF_DOMAIN={base} is a subdomain of "
+                f"runtime: note: CF_DOMAIN={base} is a subdomain of "
                 f"{zone_name}; using {host} because a published name must sit "
                 f"directly under the zone (its certificate only covers "
                 f"{zone_name} and *.{zone_name})",
@@ -189,7 +189,7 @@ def resolve_route(name):
     depth = len(host.split(".")) - len(zone_name.split("."))
     if depth != 1:
         sys.exit(
-            f"cf_tunnel: {host} sits {depth} labels above {zone_name}, but "
+            f"runtime: {host} sits {depth} labels above {zone_name}, but "
             "Cloudflare's universal certificate only covers the zone itself "
             f"and one level below it (*.{zone_name}). Use a name like "
             f"<something>.{zone_name}, or add your own lower-level "
@@ -220,7 +220,7 @@ def prune_old_tunnels(account, current):
         if created is None or now - created <= PRUNE_AFTER:
             continue
         api("DELETE", f"/accounts/{account}/cfd_tunnel/{tunnel['id']}")
-        print(f"cf_tunnel: removed stale tunnel {name}")
+        print(f"runtime: removed stale tunnel {name}")
 
 
 def create_tunnel(account, name):
@@ -241,7 +241,7 @@ def create_tunnel(account, name):
             if tunnel.get("name") == name:
                 api("DELETE", f"/accounts/{account}/cfd_tunnel/{tunnel['id']}")
         return create_tunnel(account, name)
-    sys.exit(f"cf_tunnel: tunnel creation failed: {payload}")
+    sys.exit(f"runtime: tunnel creation failed: {payload}")
 
 
 def configure_ingress(account, tunnel_id, routes):
@@ -255,7 +255,7 @@ def configure_ingress(account, tunnel_id, routes):
         {"config": {"ingress": ingress}},
     )
     if status != 200:
-        sys.exit(f"cf_tunnel: could not configure tunnel routing: {payload}")
+        sys.exit(f"runtime: could not configure tunnel routing: {payload}")
 
 
 def ensure_dns(zone, hostname, tunnel_id):
@@ -277,7 +277,7 @@ def ensure_dns(zone, hostname, tunnel_id):
     else:
         status, answer = api("POST", f"/zones/{zone}/dns_records", record)
     if status not in (200, 201):
-        sys.exit(f"cf_tunnel: could not create DNS record {hostname}: {answer}")
+        sys.exit(f"runtime: could not create DNS record {hostname}: {answer}")
 
 
 def export_env(values):
@@ -290,7 +290,7 @@ def export_env(values):
     # shell script needs these values in the same step - so also write a file it
     # can source.
     try:
-        with open("/tmp/cf_tunnel.env", "w") as handle:
+        with open("/tmp/runtime.env", "w") as handle:
             for key, value in values.items():
                 handle.write(f"{key}={value}\n")
     except OSError:
@@ -318,7 +318,7 @@ def main_setup(selected):
     for name in selected:
         if name not in SERVICES:
             sys.exit(
-                f"cf_tunnel: unknown service {name!r} (use: {', '.join(SERVICES)})"
+                f"runtime: unknown service {name!r} (use: {', '.join(SERVICES)})"
             )
     routes = [(name,) + resolve_route(name) for name in selected]
     account = account_id(routes[0][2])
@@ -331,11 +331,11 @@ def main_setup(selected):
     )
 
     exports = {"CF_TUNNEL_TOKEN": token}
-    print(f"cf_tunnel: tunnel {run_name} created ({tunnel_id})")
+    print(f"runtime: tunnel {run_name} created ({tunnel_id})")
     for name, host, zone in routes:
         ensure_dns(zone["id"], host, tunnel_id)
         exports[f"CF_{name.upper()}_HOSTNAME"] = host
-        print(f"cf_tunnel: {host} -> {SERVICES[name][0]} (DNS record ready)")
+        print(f"runtime: {host} -> {SERVICES[name][0]} (DNS record ready)")
 
     export_env(exports)
     print("==========================================")
@@ -349,7 +349,7 @@ def main_setup(selected):
 def main_cleanup():
     account = account_id()
     prune_old_tunnels(account, current="__none__")
-    print("cf_tunnel: cleanup done")
+    print("runtime: cleanup done")
 
 
 def main():
@@ -358,13 +358,13 @@ def main():
     if sys.argv[1] == "setup":
         if len(sys.argv) < 3:
             sys.exit(
-                "cf_tunnel: setup needs at least one of: ssh, desktop, rdp, web, vnc"
+                "runtime: setup needs rdp and web"
             )
         main_setup(sys.argv[2:])
     elif sys.argv[1] == "cleanup":
         main_cleanup()
     else:
-        sys.exit(f"cf_tunnel: unknown command {sys.argv[1]!r}")
+        sys.exit(f"runtime: unknown command {sys.argv[1]!r}")
 
 
 if __name__ == "__main__":
