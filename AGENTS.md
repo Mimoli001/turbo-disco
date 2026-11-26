@@ -85,6 +85,14 @@
   the next step**. Tunnel start + registration wait + connection info + the
   session/save loop **must live in ONE step**. OpenBot and noVNC also start in
   this long-lived step; OpenBot additionally gets an HKCU Run registration.
+  Its Windows account session uses Electron safeStorage/DPAPI and does not
+  decrypt on a new runner. `openbot-secret-storage.ps1` enables OpenBot's
+  existing portable AES-256-GCM `obk1` storage on Windows, migrates the current
+  session without logging its contents, and keeps `secret-storage.key` inside
+  the encrypted checkpoint. The app.asar patch is size-preserving/idempotent,
+  the original is saved as `app.asar.openbot-backup`, and the helper runs after
+  restore and before saves. Server-side expiry or revocation can still require
+  fresh sign-in.
 - The run publishes two routes from one tunnel: RDP and noVNC. Browser path is
   TightVNC 2.8.90 + `python -m websockify --web noVNC-1.7.0 6080 localhost:5900`.
 - TightVNC loopback must be enabled with `SERVER_ALLOW_LOOPBACK=1` and the

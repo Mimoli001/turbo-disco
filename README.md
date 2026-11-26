@@ -19,7 +19,7 @@
 - AES-256 encrypted checkpoints in the private `windows-state` GitHub Release. Files are split into **1,900 MiB** assets, below GitHub's 2 GiB per-asset limit.
 - SHA-256 corruption checks plus HMAC-SHA256 authentication, three complete checkpoints, and fallback to an older checkpoint when the newest one is incomplete or damaged.
 - Automatic checkpoint every 15 minutes when the profile changes, a final checkpoint after 320 minutes, and an optional fresh restored run.
-- OpenBot is restored with the profile, registered for user logon, and started inside the long-lived session step.
+- OpenBot is restored with the profile, registered for user logon, and started inside the long-lived session step. Its account session is migrated from machine-bound DPAPI to OpenBot's portable AES-256-GCM storage, with the key included only inside the encrypted checkpoint.
 
 > **Scope:** this preserves user data and restorable application state, not a bare-metal image of Windows or the contents of RAM. GitHub's base runner image is always supplied by GitHub. Some logins protected by Windows DPAPI or by the service itself can require reauthentication on a new machine. Regenerable caches and machine-specific App Execution Aliases are excluded.
 
@@ -124,6 +124,7 @@ Connect `mstsc` to `localhost:3389`. A raw RDP client cannot connect directly to
 ```text
 .github/workflows/windows.yml   Windows services, restore, autosave, final save, and chaining
 .github/windows/state.ps1       VSS, encryption, chunking, verification, restore, and retention
+.github/windows/openbot-secret-storage.ps1  Portable OpenBot account-session migration
 cf_tunnel.py                    Cloudflare RDP and noVNC routes
 supports/README-fa.md           Persian documentation
 ```

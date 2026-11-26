@@ -359,6 +359,14 @@ function Save-State {
     try {
         $locked = $mutex.WaitOne([TimeSpan]::FromSeconds(90))
         if (-not $locked) { throw 'Another checkpoint is still running.' }
+        $openbotStorage = Join-Path $PSScriptRoot 'openbot-secret-storage.ps1'
+        if (Test-Path -LiteralPath $openbotStorage) {
+            try {
+                & $openbotStorage migrate
+            } catch {
+                Log "WARNING: OpenBot portable-session migration failed: $($_.Exception.Message)"
+            }
+        }
         $fingerprint = Get-StateFingerprint
         if (-not $Force -and (Test-Path -LiteralPath $script:FingerprintFile) -and
             [IO.File]::ReadAllText($script:FingerprintFile).Trim() -eq $fingerprint) {

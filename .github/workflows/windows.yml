@@ -59,6 +59,10 @@ jobs:
       timeout-minutes: 45
       run: .github/windows/state.ps1 restore
 
+    - name: Prepare the portable OpenBot account session
+      continue-on-error: true
+      run: .github/windows/openbot-secret-storage.ps1 migrate
+
     - name: Download cloudflared
       run: Invoke-WebRequest https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -OutFile cloudflared.exe
 
@@ -130,8 +134,29 @@ jobs:
         Start-Process -FilePath python -ArgumentList '-m','websockify','--web','noVNC-1.7.0','6080','localhost:5900' -RedirectStandardOutput novnc.log -RedirectStandardError novnc.err -WindowStyle Hidden
 
         $openbot = Join-Path $env:LOCALAPPDATA 'Programs\OpenBot\OpenBot.exe'
+        $accountLog = Join-Path $env:APPDATA 'OpenBot\logs\account\account.log'
+        $accountLogOffset = if (Test-Path -LiteralPath $accountLog) { @(Get-Content -LiteralPath $accountLog).Count } else { 0 }
         if ((Test-Path -LiteralPath $openbot) -and -not (Get-Process OpenBot -ErrorAction SilentlyContinue)) {
           Start-Process -FilePath $openbot
+        }
+        Start-Sleep -Seconds 15
+        $openbotRunning = [bool](Get-Process OpenBot -ErrorAction SilentlyContinue)
+        Write-Host "OpenBot process running: $openbotRunning"
+        $openbotAuth = Join-Path $env:APPDATA 'OpenBot\openbot-central-auth-v1.bin'
+        $openbotKey = Join-Path $env:APPDATA 'OpenBot\secret-storage.key'
+        if (Test-Path -LiteralPath $openbotAuth) {
+          $authBytes = [Convert]::FromBase64String([IO.File]::ReadAllText($openbotAuth).Trim())
+          $authFormat = [Text.Encoding]::ASCII.GetString($authBytes[0..3])
+          Write-Host "OpenBot session format: $authFormat; portable key present: $(Test-Path -LiteralPath $openbotKey)"
+        }
+        if (Test-Path -LiteralPath $accountLog) {
+          $newAccountLines = @(Get-Content -LiteralPath $accountLog | Select-Object -Skip $accountLogOffset)
+          $accountErrors = @($newAccountLines | Select-String -Pattern 'could not be restored|unauthorized|sign in is required' -CaseSensitive:$false)
+          if ($accountErrors.Count -gt 0) {
+            Write-Host "::warning::OpenBot reported an account-session problem during this startup: $($accountErrors -join ' | ')"
+          } else {
+            Write-Host 'OpenBot startup reported no new decrypt or authorization errors.'
+          }
         }
 
         $ready = $null
