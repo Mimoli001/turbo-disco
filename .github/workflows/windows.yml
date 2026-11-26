@@ -61,7 +61,10 @@ jobs:
 
     - name: Prepare the portable OpenBot account session
       continue-on-error: true
-      run: .github/windows/openbot-secret-storage.ps1 migrate
+      run: .github/windows/openbot-secret-storage.ps1 rebind
+
+    - name: Configure Git credentials through GitHub CLI
+      run: gh auth setup-git
 
     - name: Download cloudflared
       run: Invoke-WebRequest https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -OutFile cloudflared.exe
@@ -146,7 +149,7 @@ jobs:
         $openbotKey = Join-Path $env:APPDATA 'OpenBot\secret-storage.key'
         if (Test-Path -LiteralPath $openbotAuth) {
           $authBytes = [Convert]::FromBase64String([IO.File]::ReadAllText($openbotAuth).Trim())
-          $authFormat = [Text.Encoding]::ASCII.GetString($authBytes[0..3])
+          $authFormat = [Text.Encoding]::ASCII.GetString($authBytes[0..2])
           Write-Host "OpenBot session format: $authFormat; portable key present: $(Test-Path -LiteralPath $openbotKey)"
         }
         if (Test-Path -LiteralPath $accountLog) {

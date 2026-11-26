@@ -61,6 +61,7 @@
   old snapshots undecryptable. Never print it or commit the local passphrase.
 - `GH_PAT` is required for release uploads and workflow dispatch. Previous
   testing showed the job's `GITHUB_TOKEN` could not dispatch this workflow.
+  Run `gh auth setup-git` after restore so Git pushes use the same valid token.
 - `CF_ACCOUNT_ID` is optional and derived from `CF_DOMAIN`'s zone when empty.
 - Token needs only: **Cloudflare Tunnel:Edit, DNS:Edit, Zone:Read**.
   No Access permissions, identity provider, or service token.
@@ -86,13 +87,13 @@
   session/save loop **must live in ONE step**. OpenBot and noVNC also start in
   this long-lived step; OpenBot additionally gets an HKCU Run registration.
   Its Windows account session uses Electron safeStorage/DPAPI and does not
-  decrypt on a new runner. `openbot-secret-storage.ps1` enables OpenBot's
-  existing portable AES-256-GCM `obk1` storage on Windows, migrates the current
-  session without logging its contents, and keeps `secret-storage.key` inside
-  the encrypted checkpoint. The app.asar patch is size-preserving/idempotent,
-  the original is saved as `app.asar.openbot-backup`, and the helper runs after
-  restore and before saves. Server-side expiry or revocation can still require
-  fresh sign-in.
+  decrypt on a new runner. `openbot-secret-storage.ps1 export` writes a separate
+  portable AES-256-GCM `obk1` copy without changing the live v10 session or any
+  application file. After restore, `rebind` decrypts that copy and creates a
+  fresh v10 session and DPAPI-wrapped Local State key for the new Windows user.
+  `secret-storage.key` and the portable copy exist only inside the encrypted
+  checkpoint. Do not modify app.asar: ASAR Integrity rejects modified files.
+  Server-side expiry or revocation can still require fresh sign-in.
 - The run publishes two routes from one tunnel: RDP and noVNC. Browser path is
   TightVNC 2.8.90 + `python -m websockify --web noVNC-1.7.0 6080 localhost:5900`.
 - TightVNC loopback must be enabled with `SERVER_ALLOW_LOOPBACK=1` and the

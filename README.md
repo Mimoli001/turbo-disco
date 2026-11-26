@@ -19,7 +19,7 @@
 - AES-256 encrypted checkpoints in the private `windows-state` GitHub Release. Files are split into **1,900 MiB** assets, below GitHub's 2 GiB per-asset limit.
 - SHA-256 corruption checks plus HMAC-SHA256 authentication, three complete checkpoints, and fallback to an older checkpoint when the newest one is incomplete or damaged.
 - Automatic checkpoint every 15 minutes when the profile changes, a final checkpoint after 320 minutes, and an optional fresh restored run.
-- OpenBot is restored with the profile, registered for user logon, and started inside the long-lived session step. Its account session is migrated from machine-bound DPAPI to OpenBot's portable AES-256-GCM storage, with the key included only inside the encrypted checkpoint.
+- OpenBot is restored with the profile, registered for user logon, and started inside the long-lived session step. A separate portable AES-256-GCM copy of its account session is kept inside the encrypted checkpoint and rebound to the new Windows user's DPAPI key after restore, without modifying OpenBot or its ASAR integrity protection.
 
 > **Scope:** this preserves user data and restorable application state, not a bare-metal image of Windows or the contents of RAM. GitHub's base runner image is always supplied by GitHub. Some logins protected by Windows DPAPI or by the service itself can require reauthentication on a new machine. Regenerable caches and machine-specific App Execution Aliases are excluded.
 

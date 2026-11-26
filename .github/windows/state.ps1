@@ -362,7 +362,7 @@ function Save-State {
         $openbotStorage = Join-Path $PSScriptRoot 'openbot-secret-storage.ps1'
         if (Test-Path -LiteralPath $openbotStorage) {
             try {
-                & $openbotStorage migrate
+                & $openbotStorage export
             } catch {
                 Log "WARNING: OpenBot portable-session migration failed: $($_.Exception.Message)"
             }
