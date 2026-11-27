@@ -16,6 +16,7 @@ $script:Tag = if ($env:STATE_TAG) { $env:STATE_TAG } else { 'windows-state' }
 $script:WorkRoot = if ($env:STATE_WORK) { $env:STATE_WORK } else { 'D:\windows-state-work' }
 $script:PassphraseFile = if ($env:STATE_PASSPHRASE_FILE) { $env:STATE_PASSPHRASE_FILE } else { 'D:\windows-state-local\passphrase' }
 $script:ProfileRoot = $env:USERPROFILE
+$script:ExtraRoot = if ($env:STATE_EXTRA_ROOT) { $env:STATE_EXTRA_ROOT } else { 'D:\M' }
 $script:ChunkBytes = 1900MB
 $script:Keep = 3
 $script:SaveEvery = if ($env:SAVE_EVERY) { [int]$env:SAVE_EVERY } else { 900 }
@@ -140,6 +141,17 @@ function Get-StateFingerprint {
             $bytes = [Text.Encoding]::UTF8.GetBytes($line)
             $hash.AppendData($bytes)
         }
+        if (Test-Path -LiteralPath $script:ExtraRoot) {
+            $extraFiles = Get-ChildItem -LiteralPath $script:ExtraRoot -Recurse -Force -File -ErrorAction SilentlyContinue |
+                Where-Object { -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) } |
+                Sort-Object FullName
+            foreach ($file in $extraFiles) {
+                $relative = [IO.Path]::GetRelativePath($script:ExtraRoot, $file.FullName)
+                $line = "D-M/$relative|$($file.Length)|$($file.LastWriteTimeUtc.Ticks)`n"
+                $bytes = [Text.Encoding]::UTF8.GetBytes($line)
+                $hash.AppendData($bytes)
+            }
+        }
         # Application installs and registry-only changes must also trigger a
         # checkpoint even when no profile file timestamp changed.
         $hive = Join-Path $script:WorkRoot 'fingerprint-hkcu.reg'
@@ -173,15 +185,15 @@ function Get-StateFingerprint {
     }
 }
 
-function New-ShadowCopy {
+function New-ShadowCopy([string]$Volume = 'C:\') {
     try {
         $result = Invoke-CimMethod -ClassName Win32_ShadowCopy -MethodName Create -Arguments @{
-            Volume = 'C:\'
+            Volume = $Volume
             Context = 'ClientAccessible'
         }
         if ($result.ReturnValue -ne 0) { throw "VSS return code $($result.ReturnValue)" }
         $shadow = Get-CimInstance Win32_ShadowCopy -Filter "ID='$($result.ShadowID)'"
-        Log "VSS snapshot created for a consistent copy of locked files."
+        Log "VSS snapshot created for a consistent copy of locked files on $Volume."
         return $shadow
     } catch {
         Log "WARNING: VSS unavailable; copying live files instead: $($_.Exception.Message)"
@@ -402,12 +414,39 @@ function Save-State {
             }
             Remove-ShadowCopy $shadow
         }
+        $extraShadow = $null
+        $extraShadowLink = $null
+        if (Test-Path -LiteralPath $script:ExtraRoot) {
+            try {
+                $volume = [IO.Path]::GetPathRoot($script:ExtraRoot)
+                $relativeExtra = [IO.Path]::GetRelativePath($volume, $script:ExtraRoot)
+                $extraShadow = New-ShadowCopy $volume
+                if ($extraShadow) {
+                    $extraShadowLink = Join-Path $script:WorkRoot "shadow-extra-$timestamp"
+                    & cmd /c mklink /d $extraShadowLink "$($extraShadow.DeviceObject)\" *> $null
+                    if ($LASTEXITCODE -ne 0) { throw 'Could not map the extra-volume VSS snapshot.' }
+                    $extraSource = Join-Path $extraShadowLink $relativeExtra
+                } else {
+                    $extraSource = $script:ExtraRoot
+                }
+                Copy-ProfileFromSource $extraSource (Join-Path $stage 'Extra\M')
+                Log "Extra path staged: $script:ExtraRoot"
+            } finally {
+                if ($extraShadowLink -and (Test-Path -LiteralPath $extraShadowLink)) {
+                    Remove-Item -LiteralPath $extraShadowLink -Force
+                }
+                Remove-ShadowCopy $extraShadow
+            }
+        } else {
+            Log "Extra path is not present and was skipped: $script:ExtraRoot"
+        }
         Export-Metadata $metadata
         @{
-            version = 1
+            version = 2
             createdUtc = [DateTimeOffset]::UtcNow.ToString('o')
             timestamp = $timestamp
             profile = $script:ProfileRoot
+            extraPath = $script:ExtraRoot
             computer = $env:COMPUTERNAME
             chunkBytes = $script:ChunkBytes
         } | ConvertTo-Json | Out-File -LiteralPath (Join-Path $metadata 'snapshot.json') -Encoding utf8
@@ -613,7 +652,12 @@ function Restore-State([switch]$VerifyOnly) {
             }
             $validated = $true
             Log "Checkpoint $timestamp passed SHA-256, decryption and archive validation."
-            if ($VerifyOnly) { return }
+            if ($VerifyOnly) {
+                if (Test-Path -LiteralPath (Join-Path $stage 'Extra\M')) {
+                    Log "EXTRA VERIFY: archived files for $script:ExtraRoot are present."
+                }
+                return
+            }
 
             # No /MIR: restore never deletes files created by the new runner image.
             Copy-ProfileFromSource (Join-Path $stage 'Profile') $script:ProfileRoot -ForRestore
@@ -624,6 +668,11 @@ function Restore-State([switch]$VerifyOnly) {
                     throw 'Restore canary failed: Desktop\OpenBot.lnk did not reach the live profile.'
                 }
                 Log 'RESTORE CANARY: Desktop\OpenBot.lnk verified in the live profile.'
+            }
+            $extraStage = Join-Path $stage 'Extra\M'
+            if (Test-Path -LiteralPath $extraStage) {
+                Copy-ProfileFromSource $extraStage $script:ExtraRoot -ForRestore
+                Log "EXTRA RESTORE: files copied to $script:ExtraRoot without deleting destination files."
             }
             $hkcu = Join-Path $stage 'Metadata\Registry\HKCU.reg'
             if (Test-Path -LiteralPath $hkcu) {
