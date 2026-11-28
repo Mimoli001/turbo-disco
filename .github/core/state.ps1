@@ -523,9 +523,24 @@ function Restore-Packages([string]$Packages) {
     $winget = Join-Path $Packages 'winget.json'
     if ((Test-Path -LiteralPath $winget) -and (Get-Command winget -ErrorAction SilentlyContinue)) {
         Log 'Restoring missing winget packages; installed packages are not upgraded.'
-        & winget import --import-file $winget --ignore-unavailable --no-upgrade `
-            --accept-package-agreements --accept-source-agreements --disable-interactivity
-        if ($LASTEXITCODE -ne 0) { Log 'WARNING: some winget packages could not be restored.' }
+        # The base image includes a 30 GiB Visual Studio installation that is
+        # intentionally removed to keep C: small. Do not reinstall it from an
+        # older checkpoint's full-machine package inventory.
+        $inventory = Get-Content -LiteralPath $winget -Raw | ConvertFrom-Json
+        foreach ($source in $inventory.Sources) {
+            $source.Packages = @($source.Packages | Where-Object {
+                $_.PackageIdentifier -notmatch '(?i)VisualStudio'
+            })
+        }
+        $filtered = Join-Path $env:TEMP "winget-restore-$PID.json"
+        try {
+            $inventory | ConvertTo-Json -Depth 30 | Out-File -LiteralPath $filtered -Encoding utf8
+            & winget import --import-file $filtered --ignore-unavailable --no-upgrade `
+                --accept-package-agreements --accept-source-agreements --disable-interactivity
+            if ($LASTEXITCODE -ne 0) { Log 'WARNING: some winget packages could not be restored.' }
+        } finally {
+            Remove-Item -LiteralPath $filtered -Force -ErrorAction SilentlyContinue
+        }
     }
     $choco = Join-Path $Packages 'choco.txt'
     if ((Test-Path -LiteralPath $choco) -and (Get-Command choco -ErrorAction SilentlyContinue)) {

@@ -59,12 +59,27 @@ jobs:
       timeout-minutes: 45
       run: .github/core/state.ps1 restore
 
+    - name: Prepare tool paths and free system space
+      timeout-minutes: 30
+      run: .github/core/prepare.ps1
+
     - name: Prepare the portable OpenBot account session
       continue-on-error: true
       run: .github/core/helper.ps1 rebind
 
-    - name: Configure Git credentials through GitHub CLI
-      run: gh auth setup-git
+    - name: Restore GitHub CLI account and Git credentials
+      run: |
+        $token = gh auth token
+        if ([string]::IsNullOrWhiteSpace($token)) { throw 'No valid GitHub token is available from GH_PAT.' }
+        $savedToken = $env:GH_TOKEN
+        try {
+          Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
+          $token | gh auth login -h github.com --with-token
+          gh auth setup-git
+        } finally {
+          if ($savedToken) { $env:GH_TOKEN = $savedToken }
+          Remove-Variable token, savedToken -ErrorAction SilentlyContinue
+        }
 
     - name: Download cloudflared
       run: Invoke-WebRequest https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -OutFile cloudflared.exe
@@ -161,6 +176,27 @@ jobs:
             Write-Host 'OpenBot startup reported no new decrypt or authorization errors.'
           }
         }
+
+        $startupFolder = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Startup'
+        New-Item -ItemType Directory -Path $startupFolder -Force | Out-Null
+        $routerVbs = @(
+          'Set WshShell = CreateObject("WScript.Shell")'
+          'WshShell.Run """C:\Program Files\PowerShell\7\pwsh.exe"" -NoLogo -NoExit -Command ""9router --no-browser --skip-update""", 1, False'
+        ) -join [Environment]::NewLine
+        Set-Content -LiteralPath (Join-Path $startupFolder '9router.vbs') -Value $routerVbs -Encoding ascii
+        $routerTerminal = Get-CimInstance Win32_Process | Where-Object {
+          $_.Name -match '^pwsh(\.exe)?$' -and $_.CommandLine -match 'NoExit.+9router'
+        }
+        if (-not $routerTerminal) {
+          Get-CimInstance Win32_Process | Where-Object {
+            $_.CommandLine -match '9router[\\/]+(cli\.js|app[\\/]+custom-server\.js|src[\\/]+cli[\\/]+tray)'
+          } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+          Start-Sleep -Seconds 2
+          Start-Process -FilePath 'pwsh' -ArgumentList '-NoLogo','-NoExit','-Command','9router --no-browser --skip-update' -WindowStyle Normal
+          Start-Sleep -Seconds 10
+        }
+        $routerListening = [bool](Get-NetTCPConnection -LocalPort 20128 -State Listen -ErrorAction SilentlyContinue)
+        Write-Host "9router terminal startup: port 20128 listening=$routerListening"
 
         $ready = $null
         foreach ($i in 1..60) {
