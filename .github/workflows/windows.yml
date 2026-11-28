@@ -59,11 +59,10 @@ jobs:
       timeout-minutes: 45
       run: .github/core/state.ps1 restore
 
-    - name: Prepare tool paths and free system space
-      # Toolchain moves plus a full silent Visual Studio uninstall can take
-      # 30-50 minutes on this image; the old 30-minute cap killed the step.
-      timeout-minutes: 60
-      run: .github/core/prepare.ps1
+    # "Prepare tool paths and free system space" (moving Julia, rtools45 and
+    # Strawberry to D: and uninstalling Visual Studio) is disabled on purpose:
+    # it delayed every boot by 25-50 minutes and could fail the run. Nothing
+    # is moved or removed now; the session starts straight after the restore.
 
     - name: Prepare the portable OpenBot account session
       continue-on-error: true
