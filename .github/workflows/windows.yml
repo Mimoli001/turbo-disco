@@ -60,7 +60,9 @@ jobs:
       run: .github/core/state.ps1 restore
 
     - name: Prepare tool paths and free system space
-      timeout-minutes: 30
+      # Toolchain moves plus a full silent Visual Studio uninstall can take
+      # 30-50 minutes on this image; the old 30-minute cap killed the step.
+      timeout-minutes: 60
       run: .github/core/prepare.ps1
 
     - name: Prepare the portable OpenBot account session
